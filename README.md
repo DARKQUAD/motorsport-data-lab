@@ -29,13 +29,13 @@ The data is downloaded and parsed by the code in `src/motorsport_lab/sources/`.
 
 ## Try it without installing anything
 
-[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/DARKQUAD/motorsport-data-lab/blob/main/notebooks/quickstart.ipynb) [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/DARKQUAD/motorsport-data-lab?quickstart=1)
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://motorsport-data-lab.streamlit.app) [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/DARKQUAD/motorsport-data-lab/blob/main/notebooks/quickstart.ipynb) [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/DARKQUAD/motorsport-data-lab?quickstart=1)
 
 | Where | What you get | What you need |
 |---|---|---|
 | **Google Colab** | a notebook that fetches the repo and runs the main analyses: pace, pit stops, joker cost, model zoo, blind test across seasons, who drives next | a free Google account |
 | **GitHub Codespaces** | the whole project in VS Code in the browser; the app starts on its own (port 8501) | a free GitHub account (60 h / month included) |
-| **Streamlit Community Cloud** | a public link to the app | `streamlit_app.py` and `requirements.txt` are ready; the repo owner deploys it in one click |
+| **[motorsport-data-lab.streamlit.app](https://motorsport-data-lab.streamlit.app)** | the app itself, live (Streamlit Community Cloud) | nothing, just a browser |
 
 ---
 
