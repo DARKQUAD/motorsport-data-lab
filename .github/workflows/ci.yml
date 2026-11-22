@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install (core + [models] + dev tools; the heavy [ml] extra is not needed for tests)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[models]" pytest pytest-cov ruff mypy pandas-stubs bandit pylint
+      - run: python -m ruff check src tests app
+      - run: python -m ruff format --check src tests app
+      - run: python -m mypy src
+      - run: python -m bandit -q -r src
+      - run: python -m pylint src/motorsport_lab --fail-under=9.5
+      - run: python -m pytest --cov=motorsport_lab --cov-report=term
