@@ -225,3 +225,28 @@ def ratings_figure(ratings: pd.DataFrame, path: Path, top: int = 15) -> None:
     ax.set_yticks(y, shown["driver"] + " (#" + shown["car"].astype(str) + ")", fontsize=7)
     _style(ax, "Driver vs car-mates (mixed model, 90 % CI)", "s per lap", "")
     _save(fig, path)
+
+
+def seasons_figure(scores: pd.DataFrame, path: Path) -> None:
+    """MAE per test season for each next-lap model (trained on earlier seasons only)."""
+    cols = [c for c in scores.columns if c.startswith("mae_") and c[4:].isdigit()]
+    fig, ax = _figure(7, 3.6)
+    baseline_style = {"median": (INK, "--"), "previous": (MUTED, ":")}
+    for _, row in scores.iterrows():
+        name = str(row["model"])
+        color, style = next(
+            (v for k, v in baseline_style.items() if name.startswith(k)), (None, "-")
+        )
+        ax.plot(
+            [int(c[4:]) for c in cols],
+            row[cols].to_numpy(float),
+            marker="o",
+            lw=2.4 if color else 1.0,
+            color=color,
+            ls=style,
+            label=name,
+        )
+    ax.set_yscale("log")
+    ax.legend(fontsize=6, ncol=2, frameon=False)
+    _style(ax, "Next-lap error on each unseen 24h race", "test season", "MAE (s, log scale)")
+    _save(fig, path)

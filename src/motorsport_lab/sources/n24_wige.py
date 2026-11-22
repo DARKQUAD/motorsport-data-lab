@@ -1,12 +1,15 @@
 """ADAC 24h Nürburgring official PDFs (timing by wige SOLUTIONS) -> common lap table.
 
-Two public documents are combined:
+Two public documents are combined per edition:
 
-* ``*_24h_Race_Lap_by_Lap.pdf``: every lap of every car, e.g. ``8:32.481 1(1)`` (lap 1,
-  driver 1) or ``8:29.070 pit(1)`` (a lap that ended in the pit lane);
-* ``*_24h_Race_Result_Class_Final.pdf``: class (``SP 9`` = GT3), entrant and car model.
+* the race *Lap by Lap* PDF: every lap of every car, ``8:32.481 1(1)`` (time, lap,
+  driver) or ``8:29.070 pit(1)`` (a lap that ended in the pit lane). 2017-2018 files have
+  no driver number (``8:32.481 1``); the 2020 file gives no time for lap 1;
+* the race *Result by Class* PDF: class (``SP 9`` = GT3), entrant and car model.
 
-Files are published at https://www.24h-rennen.de/ergebnisse/ .
+Files are published at https://www.24h-rennen.de/ergebnisse/ and, for older editions, on
+wige's live-timing server. Editions without a public lap-by-lap file (2019, 2021, 2024,
+2025) cannot be used.
 """
 
 from __future__ import annotations
@@ -23,11 +26,32 @@ from . import parse_laptime
 from ._http import fetch
 
 BASE_URL = "https://www.24h-rennen.de/wp-content/uploads/ergebnisse"
-EDITIONS = {
+WIGE_URL = "https://livetiming.wige.de/24h/PDF"
+EDITIONS: dict[int, tuple[str, str]] = {  # year -> (lap-by-lap URL, class-result URL)
+    2017: (
+        f"{WIGE_URL}/VERAN2017_02/24H_RENNEN$RENNEN$LAPBYLAP.pdf",
+        f"{WIGE_URL}/VERAN2017_02/24H_RENNEN$RENNEN$RESULT_CLASS.pdf",
+    ),
+    2018: (
+        f"{WIGE_URL}/VERAN2018_02/24H_RENNEN$RACE$LAPBYLAP.pdf",
+        f"{WIGE_URL}/VERAN2018_02/24H_RENNEN$RACE$RESULT_CLASS.pdf",
+    ),
+    2020: (
+        f"{BASE_URL}/2020-ADAC-TOTAL-24h-Rennen/34-24h_Rennen_Race_Lap_by_Lap.pdf",
+        f"{BASE_URL}/2020-ADAC-TOTAL-24h-Rennen/32-24h_Rennen_Class_Result_Official_New-signed.pdf",
+    ),
+    2022: (
+        f"{BASE_URL}/2022-ADAC-TotalEnergies-24h-Nuerburgring/38_24h_Rennen_Race_Lap_by_Lap.pdf",
+        f"{BASE_URL}/2022-ADAC-TotalEnergies-24h-Nuerburgring/"
+        "37_24h_Rennen_Race_Provisional_Official_Class.pdf",
+    ),
+    2023: (
+        "https://www.24h-information.de/formulare/5561/24h_Race_Lap_by_Lap.pdf",
+        f"{BASE_URL}/2023-ADAC-TotalEnergies-24h-Nuerburgring/36_24h_Race_Result_Class_Final.pdf",
+    ),
     2026: (
-        "2026-ADAC-RAVENOL-24h-Nuerburgring",
-        "41_24h_Race_Lap_by_Lap.pdf",
-        "40_24h_Race_Result_Class_Final.pdf",
+        f"{BASE_URL}/2026-ADAC-RAVENOL-24h-Nuerburgring/41_24h_Race_Lap_by_Lap.pdf",
+        f"{BASE_URL}/2026-ADAC-RAVENOL-24h-Nuerburgring/40_24h_Race_Result_Class_Final.pdf",
     ),
 }
 TIME_RE = re.compile(r"^\d{1,2}(?::\d{2}){1,2}\.\d{3}$")
@@ -107,8 +131,9 @@ def parse_lap_by_lap(pdf: bytes | Path) -> pd.DataFrame:
                     continue
                 texts = [w.text for w in line]
                 for i in range(len(texts) - 1):
-                    lap_match = LAP_RE.match(texts[i + 1])
-                    if not (TIME_RE.match(texts[i]) and lap_match):
+                    time_text, lap_text = texts[i], texts[i + 1]
+                    lap_match = LAP_RE.match(lap_text)
+                    if not (TIME_RE.match(time_text) and lap_match):
                         continue
                     in_pit = lap_match.group(1) == "pit"
                     lap_no = lap_no + 1 if in_pit else int(lap_match.group(1))
@@ -118,7 +143,7 @@ def parse_lap_by_lap(pdf: bytes | Path) -> pd.DataFrame:
                         {
                             "car": car,
                             "lap": lap_no,
-                            "lap_time_s": parse_laptime(texts[i]),
+                            "lap_time_s": parse_laptime(time_text),
                             "driver_idx": last_driver,
                             "in_pit": in_pit,
                         }
@@ -164,9 +189,9 @@ def is_gt3(cls: str, car_model: str) -> bool:
 
 def load_edition(year: int, cache_dir: Path, gt3: bool = True) -> pd.DataFrame:
     """Download (cached) and parse one edition into the common lap schema."""
-    folder, lap_file, class_file = EDITIONS[year]
-    laps = parse_lap_by_lap(fetch(f"{BASE_URL}/{folder}/{lap_file}", cache_dir))
-    entries = parse_class_results(fetch(f"{BASE_URL}/{folder}/{class_file}", cache_dir))
+    lap_url, class_url = EDITIONS[year]
+    laps = parse_lap_by_lap(fetch(lap_url, cache_dir))
+    entries = parse_class_results(fetch(class_url, cache_dir))
     laps = laps.drop(columns="team").merge(entries, on="car", how="left")
     laps["event"] = f"n24_{year}"
     laps["flag"] = "GF"

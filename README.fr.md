@@ -12,7 +12,7 @@ ML : **Chronos-2**, **AutoGluon** (AWS), LightGBM, XGBoost, CatBoost, statsforec
 
 | Quoi | D'où ça vient | Ce que ça donne |
 |---|---|---|
-| **4 445 tours de 43 GT3**, 24h du Nürburgring 2026 | PDF officiels ADAC / wige | relais, arrêts, conditions de piste, rythme par modèle, pilotes vs coéquipiers |
+| **4 445 tours de 43 GT3**, 24h du Nürburgring 2026, **plus 5 éditions précédentes** (2017–2023, 20 315 tours de GT3 au total) pour les tests à l'aveugle | PDF officiels ADAC / wige | relais, arrêts, conditions de piste, rythme par modèle, pilotes vs coéquipiers |
 | **6 196 lignes de tours sur 7 meetings**, Championnat de France de Rallycross 2026 (Supercar + Super 1600) | résultats officiels ITS Chrono / FFSA | coût du joker par circuit, quand les pilotes le prennent, simulateur de stratégie joker |
 | **Simulateur de stratégie** (Monte-Carlo, 24 h) | calibré sur la vraie course | prédit 157 tours ; la GT3 gagnante en a fait 156 |
 | **Machine learning** : Chronos-2, AutoGluon, gradient boosting, ETS / ARIMA, intervalles conformes, SHAP | backtest glissant, découpage temporel | un résultat honnête, avec intervalles de confiance |
@@ -138,8 +138,8 @@ indice de piste des 10 dernières minutes). Entraînement sur les heures 0–16,
 | Forêt aléatoire | 42,6 s | 11,7 s | −0,9 s [−23,7 ; +12,8] |
 | Référence : même temps que le tour précédent | 43,5 s | 10,7 s | 0 |
 
-* Le gradient boosting gagne (LightGBM, HistGradientBoosting, CatBoost : moins de 0,5 s d'écart entre
-  eux), **devant AutoGluon**, et c'est la seule famille dont l'avance sur la référence est
+* Sur cette course, le gradient boosting gagne (LightGBM, HistGradientBoosting, CatBoost : moins de
+  0,5 s d'écart entre eux ; **sur 5 autres courses cette avance disparaît, voir 3e**), **devant AutoGluon**, et c'est la seule famille dont l'avance sur la référence est
   significative. Les intervalles sont larges car quelques tours neutralisés coûtent des minutes.
 * **Le réglage Optuna n'a pas aidé** sur les heures de test : les meilleurs réglages sur les heures
   12–16 ne se transposent pas à la nuit et au matin. C'est rapporté tel quel.
@@ -183,7 +183,73 @@ interprétable est le bon choix. C'est un **lien, pas une preuve de cause** : un
 peut choisir de jokerer tard, alors qu'un pilote coincé dans le trafic le prend au 1er tour pour s'en
 sortir. C'est justement ce qu'explore le simulateur de joker.
 
-Limites, dites clairement : une seule course de 24 h ; tours plafonnés à 2× la référence de la
+**3e. Test à l'aveugle sur d'autres années : est-ce que ça tient au-delà de 2026 ?** Tous les
+résultats ci-dessus viennent d'une seule course. Six éditions des 24h du Nürburgring ont un fichier
+tour par tour public (2017, 2018, 2020, 2022, 2023, 2026 : 20 315 tours de GT3). Chaque modèle
+**n'apprend plus que sur les courses d'avant celle sur laquelle il est noté**, comme une équipe qui
+prépare l'édition suivante. Les « tours » de drapeau rouge de plusieurs heures (2020) sont exclus :
+aucun historique de tours ne peut les prévoir.
+
+![Saisons](reports/ml/seasons_next_lap.png)
+
+*Tour suivant*, entraîné sur toutes les courses précédentes, noté sur 5 courses jamais vues
+(2018 → 2026) :
+
+| Modèle | MAE, toutes saisons | écart à la médiane des 3 derniers tours, intervalle 95 % | Courses gagnées |
+|---|---|---|---|
+| LightGBM | **20,6 s** | −0,4 s [−1,2 ; +0,3] | 0 sur 5 |
+| HistGradientBoosting | 21,0 s | −0,1 s [−0,8 ; +0,7] | 0 |
+| **Référence : médiane des 3 derniers tours** | 21,05 s | référence | **2** |
+| Forêt aléatoire | 21,4 s | +0,4 s [−0,4 ; +1,1] | 0 |
+| AutoGluon-Tabular | 21,7 s | +0,7 s [−0,1 ; +1,3] | 0 |
+| XGBoost | 22,2 s | **+1,2 s** [+0,4 ; +1,9] | 0 |
+| CatBoost | 22,6 s | **+1,6 s** [+0,8 ; +2,3] | 2 |
+| Ridge / Huber | 28,1 / 29,1 s | **+7 à +8 s** | 0 |
+| Référence : même temps que le tour précédent | 91,3 s | **+70 s** (il recopie le tour de drapeau rouge de 2020) | 1 |
+
+*Prochain relais (8 tours)*, backtest glissant sur les 6 courses, 5 464 tours :
+
+| Modèle | MAE, tous les tours | vs dernier tour propre | MAE, tours propres | vs dernier tour propre |
+|---|---|---|---|---|
+| Chronos-2 | **38,6 s** | −1,5 s [−3,1 ; +0,1], meilleur sur 2 courses sur 6 | 19,8 s | **+6,5 s** [+5,2 ; +8,0], moins bon sur 6 sur 6 |
+| Référence : dernier tour propre + perte au stand | 40,1 s | référence | 13,3 s | référence |
+| AutoETS + perte au stand | 40,6 s | +0,5 s [0,0 ; +0,9] | 12,4 s | **−0,9 s** [−1,3 ; −0,4], meilleur sur 5 sur 6 |
+| Référence : médiane des 5 derniers tours propres + perte au stand | 41,9 s | +1,8 s [+1,1 ; +2,5] | **11,9 s** | **−1,4 s** [−2,0 ; −0,9], meilleur sur 6 sur 6 |
+| AutoGluon-TimeSeries | 43,2 s | **+3,1 s** [+1,2 ; +5,0] | 25,3 s | **+12,0 s**, moins bon sur 6 sur 6 |
+| AutoARIMA avec régresseurs | 43,5 s | **+3,4 s** [+0,9 ; +6,2] | 26,3 s | **+13,0 s** |
+
+Ce que changent les autres années :
+
+* **Deux « victoires » de 2026 ne se reproduisent pas.** L'avance significative de LightGBM sur la
+  règle simple en 2026 devient une égalité sur 5 courses. La petite avance significative d'AutoETS
+  sur tous les tours devient aussi une égalité. Une seule course ne suffit pas pour dire qu'un
+  modèle est meilleur : c'est exactement pour ça que le test à l'aveugle compte.
+* **Ce qui se reproduit :** la famille gradient boosting fait jeu égal avec la meilleure règle
+  simple, et rien ne la bat de façon fiable. Chronos-2 et AutoGluon-TimeSeries sont **moins bons sur
+  les tours en piste verte dans chacune des 6 courses**. Sur les tours propres, la meilleure
+  prévision du prochain relais est la **médiane des 5 derniers tours propres**, qui gagne les 6
+  courses.
+* **Les intervalles conformes** appris sur les courses précédentes et calibrés sur la dernière
+  couvrent 94 % (2022), 81 % (2023) et 72 % (2026) des tours pour un objectif de 80 %, mais seulement
+  **20 % en 2020** : une course de septembre dans le brouillard et la pluie, qui ne ressemblait à
+  aucune course passée. Une incertitude calibrée ne tient que si la nouvelle course ressemble à la
+  course de calibration.
+* **La note des pilotes se transmet mal d'une année à l'autre.** La corrélation de Spearman entre la
+  note d'un pilote sur une édition et la suivante vaut 0,27 (2020 → 2022), 0,37 (2022 → 2023) et 0,07
+  (2023 → 2026), et le modèle mixte n'est pas plus stable que l'écart brut entre coéquipiers. Les
+  pilotes changent de voiture et de coéquipiers, et une course de 24 h ne donne que 10 à 40 tours
+  propres par pilote. Une équipe aurait besoin de plusieurs courses, ou de télémétrie, pour noter
+  ses pilotes.
+* **Rallycross, catégories jamais vues.** Les saisons françaises précédentes ne sont pas publiques
+  tour par tour (ITS Chrono ne chronomètre le championnat que depuis 2026). Le test à l'aveugle
+  utilise donc les 4 catégories jamais utilisées pour construire les modèles : Division 3, 4, 5 et
+  Féminines (180 courses, 2 347 résultats). L'effet du joker **se reproduit presque à l'identique** :
+  joker au dernier tour × 2,3 [1,5 ; 3,4], joker au 1er tour × 0,27 [0,13 ; 0,54] (jeu de
+  développement : × 2,1 et × 0,27). Le modèle logistique entraîné sur les Supercar et Super 1600
+  désigne encore le vainqueur dans **61 %** des courses jamais vues (log loss 0,156 contre 0,271 sans
+  modèle) et reste devant le gradient boosting (58 %).
+
+Limites, dites clairement : tours plafonnés à 2× la référence de la
 voiture (un tour de drapeau rouge de plusieurs heures ne se prévoit pas) ; le repère « tour propre »
 est calculé sur toute la course, ce qui avantage un peu les références.
 
@@ -203,14 +269,16 @@ Les jeux de données traités sont dans `data/`, l'appli marche donc tout de sui
 reconstruire depuis les documents officiels, ou relancer les expériences d'IA :
 
 ```powershell
-.venv\Scripts\mlab data n24 --year 2026      # télécharge + lit les PDF ADAC / wige
+.venv\Scripts\mlab data n24 --year 2026      # télécharge + lit les PDF ADAC / wige (aussi 2017, 2018, 2020, 2022, 2023)
+.venv\Scripts\mlab data rx --year 2026 --other-categories   # jeu de test à l'aveugle rallycross
 .venv\Scripts\mlab data rx --year 2026       # télécharge + lit les résultats ITS Chrono
 .venv\Scripts\mlab report n24                # tableaux + figures dans reports/n24
 .venv\Scripts\mlab report rx                 # tableaux + figures dans reports/rx_france
 .venv\Scripts\python -m pip install -e ".[models]"   # LightGBM, XGBoost, CatBoost, statsforecast, statsmodels, Optuna
 .venv\Scripts\mlab ml classic                # zoo de modèles + Optuna + SHAP + conforme (~2 min)
 .venv\Scripts\mlab ml ratings                # note des pilotes (modèle mixte)
-.venv\Scripts\mlab ml rx-win                 # modèle de victoire en rallycross
+.venv\Scripts\mlab ml rx-win                 # modèle de victoire en rallycross (+ test à l'aveugle)
+.venv\Scripts\mlab ml seasons --models last_clean_lap,median_5_clean_laps,auto_ets,auto_theta   # test à l'aveugle sur 6 éditions
 .venv\Scripts\mlab ml forecast               # backtest ETS / Theta / ARIMA (~1 min)
 .venv\Scripts\python -m pip install -e ".[ml]"   # Chronos-2, AutoGluon, PyTorch (le CPU suffit)
 .venv\Scripts\mlab ml forecast --models last_clean_lap,median_5_clean_laps,chronos2,autogluon   # ~10 min
@@ -243,6 +311,7 @@ src/motorsport_lab/
   ml/            forecasting.py : Chronos-2, AutoGluon-TimeSeries, ETS / Theta / ARIMA
                  classic.py : ridge, Huber, forêt aléatoire, LightGBM, XGBoost,
                  CatBoost, Optuna, SHAP, intervalles conformes ; tabular.py : AutoGluon
+                 seasons.py : tests à l'aveugle sur les 6 éditions (chaînage avant)
   reports.py     CSV + PNG ; cli.py : la commande `mlab` ; i18n.py : textes FR/EN
 app/streamlit_app.py   tableau de bord bilingue
 data/   données réelles traitées (CSV)      reports/   résultats ci-dessus
@@ -302,7 +371,7 @@ British GT et au Mans : Pi Toolbox, AiM, MoTeC, Magneti Marelli, Life Racing, Bo
 
 * Importer les exports CSV MoTeC / WinDarab et la télémétrie de simulation (mémoire partagée d'ACC,
   GT3 sur la Nordschleife) pour mesurer directement l'usure des pneus.
-* Plus de données GT3 : courses NLS (Nürburgring Langstrecken-Serie), 24h de Spa, Le Mans 2024–2026.
+* Plus de données GT3 : courses NLS (Nürburgring Langstrecken-Serie), 24h de Spa, Le Mans 2024–2026, et les éditions 2019 / 2021 / 2024 / 2025 du Nürburgring si leurs fichiers tour par tour sont publiés.
 * Déployer Chronos-2 sur Amazon SageMaker pour des prévisions en direct pendant une course.
 * World RX, spéciales de rallye (WRC) et courses de camions (ETRC), avec la même table de tours.
 

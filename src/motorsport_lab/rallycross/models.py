@@ -113,3 +113,47 @@ def cross_validate(table: pd.DataFrame) -> pd.DataFrame:
         }
     )
     return pd.DataFrame(rows).sort_values("log_loss").reset_index(drop=True)
+
+
+def holdout(train: pd.DataFrame, test: pd.DataFrame) -> pd.DataFrame:
+    """Blind test: fit on ``train`` races, score on ``test`` races of unseen categories.
+
+    The category dummies of unseen categories are all zero, so the models rely on pace gap,
+    joker timing, race type and field size only.
+    """
+    columns = list(_design(train).columns)
+    X, X_test = _design(train), _design(test, columns)
+    pace_cols = ["pace_gap_s", "cars"]
+    models = {
+        "logit_pace_only": (LogisticRegression(max_iter=1000), pace_cols),
+        "logit_full": (LogisticRegression(max_iter=1000), columns),
+        "gradient_boosting": (
+            HistGradientBoostingClassifier(max_depth=3, learning_rate=0.05, random_state=0),
+            columns,
+        ),
+    }
+    y_test = test["win"]
+    rows = []
+    for name, (model, cols) in models.items():
+        p = model.fit(X[cols], train["win"]).predict_proba(X_test[cols])[:, 1]
+        fav = test.assign(p=p).groupby("race_id")["p"].transform("max") == p
+        rows.append(
+            {
+                "model": name,
+                "log_loss": log_loss(y_test, p),
+                "brier": brier_score_loss(y_test, p),
+                "favourite_won": float(test.loc[fav, "win"].mean()),
+                "races": int(test["race_id"].nunique()),
+            }
+        )
+    base = np.full(len(test), float(train["win"].mean()))
+    rows.append(
+        {
+            "model": "base_rate (no model)",
+            "log_loss": log_loss(y_test, base),
+            "brier": brier_score_loss(y_test, base),
+            "favourite_won": np.nan,
+            "races": int(test["race_id"].nunique()),
+        }
+    )
+    return pd.DataFrame(rows).sort_values("log_loss").reset_index(drop=True)

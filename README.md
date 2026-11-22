@@ -14,7 +14,7 @@ ML: **Chronos-2**, **AutoGluon** (AWS), LightGBM, XGBoost, CatBoost, statsforeca
 
 | What | Where it comes from | What you get |
 |---|---|---|
-| **4,445 laps of 43 GT3 cars**, 24h Nürburgring 2026 | official ADAC / wige PDFs | stints, pit stops, track conditions, car-model pace, drivers vs team-mates |
+| **4,445 laps of 43 GT3 cars**, 24h Nürburgring 2026, **plus 5 earlier editions** (2017–2023, 20,315 GT3 laps in all) for blind tests | official ADAC / wige PDFs | stints, pit stops, track conditions, car-model pace, drivers vs team-mates |
 | **6,196 lap records of 7 rounds**, French Rallycross 2026 (Supercar + Super 1600) | official ITS Chrono / FFSA results | cost of the joker lap per track, when drivers take it, a joker-strategy simulator |
 | **Pit-strategy simulator** (Monte-Carlo, 24 h) | calibrated on the real race | predicts 157 laps; the real GT3 winner did 156 |
 | **Machine learning**: Chronos-2, AutoGluon, gradient boosting, ETS / ARIMA, conformal intervals, SHAP | rolling backtest, time split | an honest result, with confidence intervals |
@@ -118,7 +118,7 @@ same car are correlated). An interval that does not cross zero = a real differen
 
 **3b. Predict the next lap: the model zoo.** Same features for everyone (car model, driver slot,
 lap in stint, race hour, previous lap, median of the last 3 laps, track index of the previous
-10 minutes). Train on hours 0–16, test on hours 16–24.
+10 minutes). Train on hours 0–16, test on hours 16–24 of the 2026 race.
 
 ![Model zoo](reports/ml/classic_scores.png)
 
@@ -136,7 +136,7 @@ lap in stint, race hour, previous lap, median of the last 3 laps, track index of
 | Random forest | 42.6 s | 11.7 s | −0.9 s [−23.7; +12.8] |
 | Baseline: same as previous lap | 43.5 s | 10.7 s | 0 |
 
-* Gradient boosting wins (LightGBM, HistGradientBoosting, CatBoost: within 0.5 s of each other),
+* On this race, gradient boosting wins (LightGBM, HistGradientBoosting, CatBoost: within 0.5 s of each other; **over 5 other races this lead disappears, see 3e**),
   **ahead of AutoGluon**, and it is the only family whose lead over the baseline is significant. The
   intervals are wide because a few neutralised laps cost minutes.
 * **Optuna tuning did not help** on the test hours: the best settings on hours 12–16 do not transfer
@@ -176,7 +176,66 @@ the right choice. This is a **link, not proof of cause**: a leader in clean air 
 late, while a driver stuck in traffic takes it on lap 1 to escape. That is exactly what the joker
 simulator explores.
 
-Limits, stated plainly: one 24 h race; laps capped at 2× the car's reference (red-flag laps of
+**3e. Blind test on other years: does any of this hold beyond 2026?** Every result above comes
+from one race. Six editions of the Nürburgring 24h have a public lap-by-lap file (2017, 2018,
+2020, 2022, 2023, 2026: 20,315 GT3 laps). Each model now **only learns from the races before the
+one it is scored on**, like a team preparing next year's race. Red-flag "laps" of several hours
+(2020) are left out because no lap history can foresee them.
+
+![Seasons](reports/ml/seasons_next_lap.png)
+
+*Next lap*, trained on all earlier races, scored on 5 unseen races (2018 → 2026):
+
+| Model | MAE, all seasons | vs median of last 3 laps, 95 % interval | Races won |
+|---|---|---|---|
+| LightGBM | **20.6 s** | −0.4 s [−1.2; +0.3] | 0 of 5 |
+| HistGradientBoosting | 21.0 s | −0.1 s [−0.8; +0.7] | 0 |
+| **Baseline: median of the last 3 laps** | 21.05 s | reference | **2** |
+| Random forest | 21.4 s | +0.4 s [−0.4; +1.1] | 0 |
+| AutoGluon-Tabular | 21.7 s | +0.7 s [−0.1; +1.3] | 0 |
+| XGBoost | 22.2 s | **+1.2 s** [+0.4; +1.9] | 0 |
+| CatBoost | 22.6 s | **+1.6 s** [+0.8; +2.3] | 2 |
+| Ridge / Huber | 28.1 / 29.1 s | **+7 to +8 s** | 0 |
+| Baseline: same as previous lap | 91.3 s | **+70 s** (it repeats the 2020 red-flag lap) | 1 |
+
+*Next stint (8 laps)*, rolling backtest on all 6 races, 5,464 laps:
+
+| Model | MAE, all laps | vs last clean lap | MAE, clean laps | vs last clean lap |
+|---|---|---|---|---|
+| Chronos-2 | **38.6 s** | −1.5 s [−3.1; +0.1], better in 2 races of 6 | 19.8 s | **+6.5 s** [+5.2; +8.0], worse in 6 of 6 |
+| Baseline: last clean lap + pit loss | 40.1 s | reference | 13.3 s | reference |
+| AutoETS + pit loss | 40.6 s | +0.5 s [0.0; +0.9] | 12.4 s | **−0.9 s** [−1.3; −0.4], better in 5 of 6 |
+| Baseline: median of 5 clean laps + pit loss | 41.9 s | +1.8 s [+1.1; +2.5] | **11.9 s** | **−1.4 s** [−2.0; −0.9], better in 6 of 6 |
+| AutoGluon-TimeSeries | 43.2 s | **+3.1 s** [+1.2; +5.0] | 25.3 s | **+12.0 s**, worse in 6 of 6 |
+| AutoARIMA with regressors | 43.5 s | **+3.4 s** [+0.9; +6.2] | 26.3 s | **+13.0 s** |
+
+What the other years change:
+
+* **Two 2026 "wins" do not replicate.** LightGBM's significant lead over the simple rule in 2026
+  becomes a tie over 5 races. AutoETS's small but significant lead on all laps becomes a tie too.
+  One race is not enough to claim a model is better: this is exactly why the blind test matters.
+* **What does replicate:** the gradient-boosting family ties the best simple rule, and nothing
+  beats it reliably. Chronos-2 and AutoGluon-TimeSeries are **worse on green-flag laps in every one
+  of the 6 races**. On clean laps the best forecast of the next stint is the **median of the last
+  5 clean laps**, which wins all 6 races.
+* **Conformal intervals** fitted on earlier races and calibrated on the previous one cover 94 %
+  (2022), 81 % (2023) and 72 % (2026) of the laps for a target of 80 %, but only **20 % in 2020**:
+  a September race in fog and rain looked like no earlier race. Calibrated uncertainty only holds
+  when the new race resembles the calibration race.
+* **Driver ratings barely carry over from one year to the next.** The Spearman correlation between
+  a driver's rating in one edition and the next is 0.27 (2020 → 2022), 0.37 (2022 → 2023) and
+  0.07 (2023 → 2026), and the mixed model is no more stable than the raw team-mate delta. Drivers
+  change cars and team-mates, and a 24 h race gives each driver only 10–40 clean laps. A team
+  would need several races, or telemetry, to rate its drivers.
+* **Rallycross, unseen categories.** Previous French seasons are not public lap by lap (ITS Chrono
+  only times the championship since 2026), so the blind test uses the 4 categories never used to
+  build the models: Division 3, 4, 5 and Féminines (180 races, 2,347 results). The joker effect
+  **replicates almost exactly**: last-lap joker × 2.3 [1.5; 3.4], lap-1 joker × 0.27 [0.13; 0.54]
+  (development set: × 2.1 and × 0.27). The logistic model trained on Supercar and Super 1600 still
+  picks the winner in **61 %** of the unseen races (log loss 0.156 vs 0.271 for no model) and stays
+  ahead of gradient boosting (58 %).
+
+Limits, stated plainly: laps capped at 2× the car's reference (red-flag laps of
 several hours cannot be forecast); the "clean lap" flag is computed on the whole race, which
 slightly favours the baselines.
 
@@ -196,14 +255,16 @@ The processed datasets are in `data/`, so the app works straight away. To rebuil
 official documents, or to rerun the AI experiments:
 
 ```powershell
-.venv\Scripts\mlab data n24 --year 2026      # download + parse the ADAC / wige PDFs
+.venv\Scripts\mlab data n24 --year 2026      # download + parse the ADAC / wige PDFs (also 2017, 2018, 2020, 2022, 2023)
+.venv\Scripts\mlab data rx --year 2026 --other-categories   # rallycross blind test set
 .venv\Scripts\mlab data rx --year 2026       # download + parse the ITS Chrono results
 .venv\Scripts\mlab report n24                # tables + figures in reports/n24
 .venv\Scripts\mlab report rx                 # tables + figures in reports/rx_france
 .venv\Scripts\python -m pip install -e ".[models]"   # LightGBM, XGBoost, CatBoost, statsforecast, statsmodels, Optuna
 .venv\Scripts\mlab ml classic                # model zoo + Optuna + SHAP + conformal (~2 min)
 .venv\Scripts\mlab ml ratings                # mixed-effects driver ratings
-.venv\Scripts\mlab ml rx-win                 # rallycross win model
+.venv\Scripts\mlab ml rx-win                 # rallycross win model (+ blind test)
+.venv\Scripts\mlab ml seasons --models last_clean_lap,median_5_clean_laps,auto_ets,auto_theta   # blind test on 6 editions
 .venv\Scripts\mlab ml forecast               # ETS / Theta / ARIMA backtest (~1 min)
 .venv\Scripts\python -m pip install -e ".[ml]"   # Chronos-2, AutoGluon, PyTorch (CPU is fine)
 .venv\Scripts\mlab ml forecast --models last_clean_lap,median_5_clean_laps,chronos2,autogluon   # ~10 min
@@ -235,6 +296,7 @@ src/motorsport_lab/
   ml/            forecasting.py: Chronos-2, AutoGluon-TimeSeries, ETS / Theta / ARIMA
                  classic.py: ridge, Huber, random forest, LightGBM, XGBoost, CatBoost,
                  Optuna, SHAP, conformal intervals; tabular.py: AutoGluon-Tabular
+                 seasons.py: blind tests across the 6 editions (forward chaining)
   reports.py     CSV + PNG; cli.py: the `mlab` command; i18n.py: FR/EN texts
 app/streamlit_app.py   bilingual dashboard
 data/   processed real data (CSV)      reports/   results shown above
@@ -294,7 +356,7 @@ data services: Pi Toolbox, AiM, MoTeC, Magneti Marelli, Life Racing, Bosch WinDa
 
 * Import MoTeC / WinDarab CSV exports and sim-racing telemetry (ACC shared memory, GT3 at the
   Nordschleife) to measure tyre wear directly.
-* More GT3 data: NLS (Nürburgring Endurance Series) races, Spa 24h, Le Mans 2024–2026.
+* More GT3 data: NLS (Nürburgring Endurance Series) races, Spa 24h, Le Mans 2024–2026, and the 2019 / 2021 / 2024 / 2025 Nürburgring editions if their lap-by-lap files are published.
 * Deploy Chronos-2 on Amazon SageMaker for live forecasts during a race.
 * World RX, rally stages (WRC) and truck racing (ETRC) with the same lap-table approach.
 

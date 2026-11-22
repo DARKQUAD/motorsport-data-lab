@@ -146,6 +146,8 @@ def statistical(history: pd.DataFrame, future: pd.DataFrame, model: str) -> pd.S
       planned stops, like the race-engineer baseline;
     * ``auto_arima_x``: AutoARIMA on the full (capped) lap series with the pit laps as
       exogenous regressors.
+
+    A car with no clean lap before the cut-off gets the "last clean lap" rule instead.
     """
     from statsforecast import StatsForecast
     from statsforecast.models import AutoARIMA, AutoETS, AutoTheta, Naive
@@ -177,10 +179,12 @@ def statistical(history: pd.DataFrame, future: pd.DataFrame, model: str) -> pd.S
     base = level.set_index(["unique_id", "step"])[column]
     lookup = pd.MultiIndex.from_arrays([future["item_id"], step])
     values = base.reindex(lookup).to_numpy()
-    return pd.Series(
+    pred = pd.Series(
         values + future["in_pit"].to_numpy() * in_off + future["out_lap"].to_numpy() * out_off,
         index=future.index,
     )
+    # a car without clean laps in its history (long neutralisation): fall back on the rule
+    return pred.fillna(baseline(history, future, 1))
 
 
 _MODELS: dict[str, Any] = {}

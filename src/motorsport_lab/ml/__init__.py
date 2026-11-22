@@ -6,5 +6,6 @@
   rolling-origin backtest;
 * ``classic``: next-lap model zoo (ridge, Huber, random forest, LightGBM, XGBoost, CatBoost,
   Optuna tuning, SHAP, conformal intervals), extra ``[models]``;
-* ``tabular``: an AutoGluon-Tabular lap model with the same time-based split.
+* ``tabular``: an AutoGluon-Tabular lap model with the same time-based split;
+* ``seasons``: blind tests across 6 Nürburgring editions (train on earlier races only).
 """

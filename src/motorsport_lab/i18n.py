@@ -284,6 +284,23 @@ TEXT: dict[str, dict[str, str]] = {
             "(regroupement partiel) : 6 tours chanceux ne suffisent pas pour être en tête."
         ),
     },
+    "ml_seasons": {
+        "en": "5. Blind test on other years (2017-2026)",
+        "fr": "5. Test à l'aveugle sur d'autres années (2017-2026)",
+    },
+    "ml_seasons_help": {
+        "en": (
+            "Six Nürburgring 24h races. Each model only learns from the races before the one "
+            "it is scored on, like a team preparing next year. Red-flag laps of several hours "
+            "are left out: no lap history can foresee them."
+        ),
+        "fr": (
+            "Six éditions des 24h du Nürburgring. Chaque modèle n'apprend que sur les courses "
+            "d'avant celle sur laquelle il est noté, comme une équipe qui prépare l'année "
+            "suivante. Les tours de drapeau rouge de plusieurs heures sont exclus : aucun "
+            "historique ne peut les prévoir."
+        ),
+    },
     "ml_rx": {
         "en": "4. Rallycross: what wins a race?",
         "fr": "4. Rallycross : qu'est-ce qui fait gagner ?",
@@ -292,14 +309,15 @@ TEXT: dict[str, dict[str, str]] = {
         "en": (
             "Logistic regression: odds of winning by joker timing at equal pace (odds ratio "
             "> 1 = better than a mid-race joker). Then three classifiers, each tested on a "
-            "whole meeting it never saw. This is a link, not proof of cause: leaders can "
-            "choose to joker late."
+            "whole meeting it never saw, then on 4 unseen categories (Division 3, 4, 5, "
+            "Féminines). This is a link, not proof of cause: leaders can choose to joker late."
         ),
         "fr": (
             "Régression logistique : chances de gagner selon le moment du joker, à rythme "
             "égal (rapport de cotes > 1 = mieux qu'un joker en milieu de course). Puis trois "
-            "classifieurs, chacun testé sur un meeting entier jamais vu. C'est un lien, pas "
-            "une preuve de cause : les leaders peuvent choisir de jokerer tard."
+            "classifieurs, chacun testé sur un meeting entier jamais vu, puis sur 4 catégories "
+            "jamais vues (Division 3, 4, 5, Féminines). C'est un lien, pas une preuve de "
+            "cause : les leaders peuvent choisir de jokerer tard."
         ),
     },
 }

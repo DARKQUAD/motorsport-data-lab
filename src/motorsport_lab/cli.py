@@ -19,10 +19,13 @@ def _data(args: argparse.Namespace) -> None:
         df = load_edition(args.year, CACHE / "n24")
         path = ROOT / "data" / "n24" / f"n24_{args.year}_gt3_laps.csv"
     else:
-        from .sources.its_rallycross import load_season
+        from .sources.its_rallycross import DEFAULT_CATEGORIES, load_season
 
-        df = load_season(str(args.year), cache_dir=CACHE / "its")
-        path = ROOT / "data" / "rx_france" / f"rx_france_{args.year}_laps.csv"
+        other = ("Division 3", "Division 4", "Division 5", "Féminines")
+        categories = other if args.other_categories else DEFAULT_CATEGORIES
+        df = load_season(str(args.year), categories, cache_dir=CACHE / "its")
+        suffix = "_other_categories" if args.other_categories else ""
+        path = ROOT / "data" / "rx_france" / f"rx_france_{args.year}{suffix}_laps.csv"
     path.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(path, index=False, encoding="utf-8")
     print(f"{len(df)} rows -> {path}")
@@ -75,6 +78,25 @@ def _forecast(df: pd.DataFrame, out: Path, models: list[str], time_limit: int) -
     return scores
 
 
+def _seasons(out: Path, args: argparse.Namespace) -> pd.DataFrame:
+    from . import reports
+    from .ml import seasons
+
+    laps = seasons.load_all(ROOT / "data" / "n24")
+    table = seasons.season_table(laps)
+    errors = seasons.next_lap(table, autogluon_time_limit=args.time_limit)
+    scores = seasons.summarise(errors, reference=seasons.BASELINES[1])
+    scores.to_csv(out / "seasons_next_lap.csv", index=False)
+    seasons.conformal(table).to_csv(out / "seasons_conformal.csv", index=False)
+    seasons.rating_stability(laps).to_csv(out / "seasons_rating_stability.csv", index=False)
+    reports.seasons_figure(scores, out / "seasons_next_lap.png")
+    if args.models:
+        results = seasons.forecast(laps, args.models.split(","), ag_time_limit=args.time_limit)
+        results.to_csv(out / "seasons_forecast_backtest.csv.gz", index=False)
+        seasons.forecast_summary(results).to_csv(out / "seasons_forecast.csv", index=False)
+    return scores
+
+
 def _ml(args: argparse.Namespace) -> None:
     from . import reports
     from .endurance.laps import annotate
@@ -108,6 +130,8 @@ def _ml(args: argparse.Namespace) -> None:
             scores, out / "classic_scores.png", "Next-lap model zoo, trained h0-16, tested h16-24"
         )
         reports.shap_figure(shap, out / "classic_shap.png")
+    elif args.task == "seasons":
+        scores = _seasons(out, args)
     elif args.task == "ratings":
         from .endurance.ratings import driver_ratings
 
@@ -121,10 +145,16 @@ def _ml(args: argparse.Namespace) -> None:
         from .rallycross import models as rx
         from .rallycross.analysis import per_race
 
-        table = rx.win_table(per_race(pd.read_csv(ROOT / "data/rx_france/rx_france_2026_laps.csv")))
+        rx_dir = ROOT / "data" / "rx_france"
+        table = rx.win_table(per_race(pd.read_csv(rx_dir / "rx_france_2026_laps.csv")))
         rx.odds_ratios(table).to_csv(out / "rx_win_odds_ratios.csv", index=False)
         scores = rx.cross_validate(table)
         scores.to_csv(out / "rx_win_cv.csv", index=False)
+        other = rx_dir / "rx_france_2026_other_categories_laps.csv"
+        if other.exists():  # blind test on Division 3 / 4 / 5 and Féminines
+            unseen = rx.win_table(per_race(pd.read_csv(other)))
+            rx.holdout(table, unseen).to_csv(out / "rx_win_holdout.csv", index=False)
+            rx.odds_ratios(unseen).to_csv(out / "rx_win_odds_ratios_holdout.csv", index=False)
     print(scores.round(3).to_string(index=False))
 
 
@@ -135,12 +165,19 @@ def main(argv: list[str] | None = None) -> None:
     p = sub.add_parser("data", help="download and parse official timing documents")
     p.add_argument("source", choices=["n24", "rx"])
     p.add_argument("--year", type=int, default=2026)
+    p.add_argument(
+        "--other-categories",
+        action="store_true",
+        help="rx: Division 3/4/5 and Féminines (the blind test set) instead of Supercar + S1600",
+    )
     p.set_defaults(func=_data)
     p = sub.add_parser("report", help="build CSV tables and figures")
     p.add_argument("what", choices=["n24", "rx"])
     p.set_defaults(func=_report)
     p = sub.add_parser("ml", help="models and statistics (needs the [ml] / [models] extras)")
-    p.add_argument("task", choices=["forecast", "tabular", "classic", "ratings", "rx-win"])
+    p.add_argument(
+        "task", choices=["forecast", "tabular", "classic", "ratings", "rx-win", "seasons"]
+    )
     p.add_argument("--time-limit", type=int, default=120, help="AutoGluon budget (s)")
     p.add_argument(
         "--models",

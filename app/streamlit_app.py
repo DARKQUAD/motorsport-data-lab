@@ -202,7 +202,18 @@ elif page == "ml":
             "conformal_intervals",
         ),
         "ml_drivers": ("driver_ratings_summary", "driver_ratings"),
-        "ml_rx": ("rx_win_odds_ratios", "rx_win_cv"),
+        "ml_rx": (
+            "rx_win_odds_ratios",
+            "rx_win_cv",
+            "rx_win_holdout",
+            "rx_win_odds_ratios_holdout",
+        ),
+        "ml_seasons": (
+            "seasons_next_lap",
+            "seasons_forecast",
+            "seasons_conformal",
+            "seasons_rating_stability",
+        ),
     }
     for header, names in sections.items():
         st.header(t(header, lang))

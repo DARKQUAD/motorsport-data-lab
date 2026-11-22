@@ -120,3 +120,12 @@ def test_rx_joker_laps_are_slower(rx: pd.DataFrame) -> None:
     diff = (joker - normal).dropna()
     assert len(per_race) > 500
     assert (diff > 0).mean() > 0.9
+
+
+@pytest.mark.parametrize("year", [2017, 2018, 2020, 2022, 2023, 2026])
+def test_every_n24_edition_matches_its_official_lap_count(year: int) -> None:
+    laps = pd.read_csv(DATA / f"n24/n24_{year}_gt3_laps.csv", dtype={"car": str})
+    per_car = laps.groupby("car").agg(last=("lap", "max"), official=("laps_completed", "first"))
+    assert len(per_car) >= 25  # GT3 field
+    assert (per_car["last"] == per_car["official"]).mean() >= 0.95
+    assert laps["cls"].str.replace(" ", "").eq("SP9").mean() > 0.8

@@ -95,3 +95,31 @@ def test_rallycross_win_model() -> None:
     assert odds.loc["pace_gap_s", "odds_ratio"] < 1  # slower = fewer wins
     cv = rx.cross_validate(table).set_index("model")
     assert cv.loc["logit_full", "log_loss"] < cv.loc["base_rate (no model)", "log_loss"]
+
+
+@cache
+def all_seasons() -> pd.DataFrame:
+    from motorsport_lab.ml.seasons import load_all
+
+    return load_all(DATA / "n24")
+
+
+def test_season_table_drops_red_flag_laps_and_shares_categories() -> None:
+    from motorsport_lab.ml.seasons import RED_FLAG, YEARS, season_table
+
+    table = season_table(all_seasons())
+    assert sorted(table["season"].unique()) == list(YEARS)
+    assert table["lap_time_s"].max() < RED_FLAG * 600  # no 10-hour red-flag "lap"
+    assert isinstance(table["car_model"].dtype, pd.CategoricalDtype)
+
+
+def test_forward_chaining_never_trains_on_the_test_season() -> None:
+    pytest.importorskip("lightgbm")
+    from motorsport_lab.ml.seasons import BASELINES, next_lap, season_table, summarise
+
+    table = season_table(all_seasons())
+    errors = next_lap(table, models=("lightgbm",))
+    assert 2017 not in set(errors["season"])  # the first season is only ever training data
+    scores = summarise(errors, reference=BASELINES[1]).set_index("model")
+    assert scores.loc[BASELINES[1], "diff_vs_reference_s"] == 0
+    assert scores["seasons_won"].sum() == errors["season"].nunique()
