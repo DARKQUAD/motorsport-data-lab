@@ -214,7 +214,8 @@ aucun historique de tours ne peut les prévoir.
 | HistGradientBoosting | 21,0 s | −0,1 s [−0,8 ; +0,7] | 0 |
 | **Référence : médiane des 3 derniers tours** | 21,05 s | référence | **2** |
 | Forêt aléatoire | 21,4 s | +0,4 s [−0,4 ; +1,1] | 0 |
-| AutoGluon-Tabular | 21,7 s | +0,7 s [−0,1 ; +1,3] | 0 |
+| AutoGluon-Tabular, preset moyen (60 s) | 22,1 s | **+1,1 s** [+0,3 ; +1,8] | 0 |
+| AutoGluon-Tabular, **best_quality** (600 s par course, bagging + empilement) | 22,2 s | **+1,2 s** [+0,4 ; +1,9] | 0 |
 | XGBoost | 22,2 s | **+1,2 s** [+0,4 ; +1,9] | 0 |
 | CatBoost | 22,6 s | **+1,6 s** [+0,8 ; +2,3] | 2 |
 | Ridge / Huber | 28,1 / 29,1 s | **+7 à +8 s** | 0 |
@@ -228,10 +229,13 @@ aucun historique de tours ne peut les prévoir.
 | Référence : dernier tour propre + perte au stand | 40,1 s | référence | 13,3 s | référence |
 | AutoETS + perte au stand | 40,6 s | +0,5 s [0,0 ; +0,9] | 12,4 s | **−0,9 s** [−1,3 ; −0,4], meilleur sur 5 sur 6 |
 | Référence : médiane des 5 derniers tours propres + perte au stand | 41,9 s | +1,8 s [+1,1 ; +2,5] | **11,9 s** | **−1,4 s** [−2,0 ; −0,9], meilleur sur 6 sur 6 |
-| AutoGluon-TimeSeries | 43,2 s | **+3,1 s** [+1,2 ; +5,0] | 25,3 s | **+12,0 s**, moins bon sur 6 sur 6 |
+| AutoGluon-TimeSeries, preset rapide | 43,2 s | **+3,1 s** [+1,2 ; +5,0] | 25,3 s | **+12,0 s**, moins bon sur 6 sur 6 |
+| AutoGluon-TimeSeries, **best_quality** (120 s par coupure ; inclut le réglage fin de Chronos-2 et Toto) | 44,3 s | **+4,2 s** [+2,2 ; +6,2] | 28,4 s | **+15,1 s**, moins bon sur 6 sur 6 |
 | AutoARIMA avec régresseurs | 43,5 s | **+3,4 s** [+0,9 ; +6,2] | 26,3 s | **+13,0 s** |
 
 Ce que changent les autres années :
+
+* **Le preset `best_quality` d'AutoGluon n'aide pas ici.** Il entraîne beaucoup plus de modèles et les empile, mais il ne fait pas mieux que le preset moyen sur le tour suivant, et moins bien que le preset rapide sur le prochain relais. Chercher plus de modèles ne compense pas 6 courses de données et des neutralisations qu'aucun historique ne prévoit. Le budget de temps (120 s par coupure pour les séries temporelles) reste modeste : AutoGluon a sauté le réglage fin de Chronos-2 faute de temps, un calcul beaucoup plus long pourrait faire mieux.
 
 * **Deux « victoires » de 2026 ne se reproduisent pas.** L'avance significative de LightGBM sur la
   règle simple en 2026 devient une égalité sur 5 courses. La petite avance significative d'AutoETS

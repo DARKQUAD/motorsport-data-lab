@@ -205,7 +205,8 @@ one it is scored on**, like a team preparing next year's race. Red-flag "laps" o
 | HistGradientBoosting | 21.0 s | −0.1 s [−0.8; +0.7] | 0 |
 | **Baseline: median of the last 3 laps** | 21.05 s | reference | **2** |
 | Random forest | 21.4 s | +0.4 s [−0.4; +1.1] | 0 |
-| AutoGluon-Tabular | 21.7 s | +0.7 s [−0.1; +1.3] | 0 |
+| AutoGluon-Tabular, medium preset (60 s) | 22.1 s | **+1.1 s** [+0.3; +1.8] | 0 |
+| AutoGluon-Tabular, **best_quality** (600 s per race, bagging + stacking) | 22.2 s | **+1.2 s** [+0.4; +1.9] | 0 |
 | XGBoost | 22.2 s | **+1.2 s** [+0.4; +1.9] | 0 |
 | CatBoost | 22.6 s | **+1.6 s** [+0.8; +2.3] | 2 |
 | Ridge / Huber | 28.1 / 29.1 s | **+7 to +8 s** | 0 |
@@ -219,10 +220,13 @@ one it is scored on**, like a team preparing next year's race. Red-flag "laps" o
 | Baseline: last clean lap + pit loss | 40.1 s | reference | 13.3 s | reference |
 | AutoETS + pit loss | 40.6 s | +0.5 s [0.0; +0.9] | 12.4 s | **−0.9 s** [−1.3; −0.4], better in 5 of 6 |
 | Baseline: median of 5 clean laps + pit loss | 41.9 s | +1.8 s [+1.1; +2.5] | **11.9 s** | **−1.4 s** [−2.0; −0.9], better in 6 of 6 |
-| AutoGluon-TimeSeries | 43.2 s | **+3.1 s** [+1.2; +5.0] | 25.3 s | **+12.0 s**, worse in 6 of 6 |
+| AutoGluon-TimeSeries, fast preset | 43.2 s | **+3.1 s** [+1.2; +5.0] | 25.3 s | **+12.0 s**, worse in 6 of 6 |
+| AutoGluon-TimeSeries, **best_quality** (120 s per cut-off; includes Chronos-2 fine-tuning and Toto) | 44.3 s | **+4.2 s** [+2.2; +6.2] | 28.4 s | **+15.1 s**, worse in 6 of 6 |
 | AutoARIMA with regressors | 43.5 s | **+3.4 s** [+0.9; +6.2] | 26.3 s | **+13.0 s** |
 
 What the other years change:
+
+* **AutoGluon's `best_quality` preset does not help here.** It trains many more models and stacks them, yet it ends up no better than the medium preset on the next lap and worse than the fast preset on the next stint. More model search cannot make up for 6 races of data and neutralisations no lap history can foresee. The time budget (120 s per cut-off for time series) is modest: AutoGluon skipped its Chronos-2 fine-tuning when time ran out, so a much longer run could do better.
 
 * **Two 2026 "wins" do not replicate.** LightGBM's significant lead over the simple rule in 2026
   becomes a tie over 5 races. AutoETS's small but significant lead on all laps becomes a tie too.
