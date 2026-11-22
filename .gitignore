@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.cache/
+AutogluonModels/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+*.egg-info/
+*.pdf
+.claude/
+.streamlit/secrets.toml

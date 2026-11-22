@@ -1,0 +1,2 @@
+laps,n_cars,normal_lap_s,pace_sd_s,lap_noise_sd_s,joker_cost_s,lap1_extra_s,start_spacing_s,follow_gap_s,pass_advantage_s,lap1_incident_rate,lap1_incident_cost_s,event,category
+7,8,39.299,0.9676621292184223,0.35,1.9789999999999992,0.9510000000000005,0.2,0.3,0.8,0.2,2.0,Lohéac,Supercar

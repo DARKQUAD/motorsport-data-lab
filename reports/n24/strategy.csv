@@ -1,0 +1,6 @@
+strategy,mean_laps,p10_laps,p90_laps,mean_stops,share_best
+"Full stints, double-stint tyres",157.323,156.0,159.0,19.029666666666667,0.8936666666666667
+Double-stint tyres + pit early under neutralisation,157.124,156.0,159.0,22.134333333333334,0.6993333333333334
+"Full stints, new tyres every stop",156.66566666666668,155.0,158.0,19.006666666666668,0.291
+"Full stints, new tyres, pit early under neutralisation",156.462,155.0,158.0,22.054666666666666,0.17566666666666667
+"Short stints (one lap less), new tyres",155.55033333333333,154.0,157.0,21.987,0.007
