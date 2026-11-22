@@ -17,10 +17,23 @@ ML : **Chronos-2**, **AutoGluon** (AWS), LightGBM, XGBoost, CatBoost, statsforec
 | **Simulateur de stratégie** (Monte-Carlo, 24 h) | calibré sur la vraie course | prédit 157 tours ; la GT3 gagnante en a fait 156 |
 | **Machine learning** : Chronos-2, AutoGluon, gradient boosting, ETS / ARIMA, intervalles conformes, SHAP | backtest glissant, découpage temporel | un résultat honnête, avec intervalles de confiance |
 | **Statistiques** : note des pilotes par modèle mixte, modèle logistique des victoires en rallycross | statsmodels | qui est rapide dans sa voiture ; ce que vaut le moment du joker |
+| **Qui prend le prochain relais ?** Style des pilotes à partir du chronométrage, et un agent qui apprend le rythme de chaque pilote pendant la course (bandit bayésien / apprentissage par renforcement) | simulateur calibré sur les 6 courses | +196 s par rapport à une rotation fixe ; le style de l'an dernier seul aide à peine |
 | **Appli Streamlit bilingue** (FR/EN) | `app/streamlit_app.py` | tous les graphiques, en interactif |
 
 Aucune donnée n'est inventée : tout vient des documents publics des chronométreurs officiels,
 téléchargés et lus par le code de `src/motorsport_lab/sources/`.
+
+---
+
+## Essayer sans rien installer
+
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/DARKQUAD/motorsport-data-lab/blob/main/notebooks/quickstart.ipynb) [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/DARKQUAD/motorsport-data-lab?quickstart=1)
+
+| Où | Ce que tu obtiens | Ce qu'il faut |
+|---|---|---|
+| **Google Colab** | un notebook qui récupère le dépôt et lance les analyses principales : rythme, arrêts, coût du joker, zoo de modèles, test à l'aveugle sur plusieurs saisons, qui prend le prochain relais | un compte Google gratuit |
+| **GitHub Codespaces** | tout le projet dans VS Code, dans le navigateur ; l'appli démarre toute seule (port 8501) | un compte GitHub gratuit (60 h / mois incluses) |
+| **Streamlit Community Cloud** | un lien public vers l'appli | `streamlit_app.py` et `requirements.txt` sont prêts ; le propriétaire du dépôt la déploie en un clic |
 
 ---
 
@@ -249,6 +262,51 @@ Ce que changent les autres années :
   désigne encore le vainqueur dans **61 %** des courses jamais vues (log loss 0,156 contre 0,271 sans
   modèle) et reste devant le gradient boosting (58 %).
 
+**3f. Style des pilotes, et qui doit prendre le prochain relais ?** Une stratégie peut-elle
+s'adapter au style de chaque pilote ? Avec les seules données de chronométrage, le style d'un
+pilote se voit à travers cinq traits mesurés par rapport à sa propre voiture et corrigés des
+conditions de piste : rythme, régularité, baisse en fin de relais, écart de nuit et tour pneus
+froids ([profils](reports/ml/style_profiles_latest.csv)).
+
+* **D'une course à l'autre, aucun des cinq traits ne se transmet.** Corrélation de Spearman de
+  chaque trait d'une édition à la suivante : rythme 0,19 / −0,11, régularité 0,03 / 0,14, baisse en
+  fin de relais 0,23 / −0,11, écart de nuit 0,39 / −0,11, tour pneus froids 0,19 / 0,01
+  (2022 → 2023 / 2023 → 2026, 16 à 29 pilotes présents aux deux courses). Un pilote fait 10 à 40
+  tours propres en 24 h et change de voiture et de coéquipiers d'une année à l'autre : le style mesuré
+  sur une course est surtout du bruit. Adapter une stratégie au style de l'an dernier, ce serait
+  l'adapter à du bruit.
+* **Au sein d'une même course, le rythme se transmet.** Le rythme d'un pilote sur les 12 premières
+  heures prédit les 12 suivantes : Spearman 0,54 (2022, 60 pilotes), 0,29 (2023, 63), 0,28 (2026, 39).
+
+Ce qu'il est utile d'apprendre, c'est donc le rythme des pilotes **pendant la course**. À chaque
+arrêt, l'équipe choisit le prochain pilote en respectant les règles (chaque pilote fait au moins
+4 relais, au plus 2 d'affilée) : un bandit manchot sous contraintes, la forme la plus simple
+d'apprentissage par renforcement. Le simulateur est calibré sur les mesures ci-dessus (écart entre
+pilotes 4,0 s, écart de nuit 4,3 s, forme d'un relais à l'autre 4,5 s pour que la fiabilité au sein
+d'une course égale les ~0,38 mesurés). 2 000 courses de 24 h simulées, 3 pilotes, gain par rapport
+à une rotation fixe :
+
+| Politique | Temps gagné | Fourchette 95 % | Courses meilleures que la rotation |
+|---|---|---|---|
+| Profil de la course précédente seul | +52 s | [−571 ; +632] | 56 % |
+| Apprendre pendant la course (mise à jour bayésienne, choix glouton) | +183 s | [−282 ; +697] | 76 % |
+| Thompson sampling (explore davantage) | +151 s | [−287 ; +622] | 75 % |
+| **Course précédente comme a priori faible + apprendre pendant la course** | **+196 s (0,4 tour)** | [−278 ; +715] | **77 %** |
+| Connaît le vrai rythme de chaque pilote (borne haute) | +323 s | [−143 ; +832] | 91 % |
+
+![Qui prend le prochain relais](reports/ml/lineup_value_of_history.png)
+
+* Apprendre pendant la course capte **60 % du gain possible** ; le profil de l'an dernier seul, 16 %.
+  L'exploration supplémentaire du Thompson sampling ne paie pas : la règle du minimum de relais force
+  déjà chaque pilote à rouler.
+* Le graphique montre quand l'historique commencerait à payer : seulement si le profil de la course
+  précédente prédisait celle-ci avec une corrélation au-dessus de ~0,5. C'est bien plus que tout ce
+  qui est mesuré ici : c'est le rôle de la télémétrie (points de freinage, courbes d'accélérateur),
+  pas des temps au tour.
+* Ce que ce n'est pas : un outil validé. Le gain vient d'un simulateur construit sur des écarts
+  mesurés, et le vrai contrefactuel (ce qui se serait passé avec un autre pilote) n'est jamais
+  observé. Tu peux changer les règles dans l'appli ou dans le notebook.
+
 Limites, dites clairement : tours plafonnés à 2× la référence de la
 voiture (un tour de drapeau rouge de plusieurs heures ne se prévoit pas) ; le repère « tour propre »
 est calculé sur toute la course, ce qui avantage un peu les références.
@@ -278,6 +336,7 @@ reconstruire depuis les documents officiels, ou relancer les expériences d'IA :
 .venv\Scripts\mlab ml classic                # zoo de modèles + Optuna + SHAP + conforme (~2 min)
 .venv\Scripts\mlab ml ratings                # note des pilotes (modèle mixte)
 .venv\Scripts\mlab ml rx-win                 # modèle de victoire en rallycross (+ test à l'aveugle)
+.venv\Scripts\mlab ml style                  # style des pilotes + qui prend le relais
 .venv\Scripts\mlab ml seasons --models last_clean_lap,median_5_clean_laps,auto_ets,auto_theta   # test à l'aveugle sur 6 éditions
 .venv\Scripts\mlab ml forecast               # backtest ETS / Theta / ARIMA (~1 min)
 .venv\Scripts\python -m pip install -e ".[ml]"   # Chronos-2, AutoGluon, PyTorch (le CPU suffit)
@@ -305,7 +364,8 @@ src/motorsport_lab/
     its_rallycross.py  rallycross France : API publique ITS Chrono + PDF de manche (tours, joker)
     alkamel.py         FIA WEC / Le Mans : CSV Analysis (Al Kamel)
   endurance/     relais, arrêts, indice de piste, écarts pilotes, stratégie Monte-Carlo,
-                 ratings.py : note des pilotes par modèle mixte
+                 ratings.py : note des pilotes par modèle mixte ; driver_style.py :
+                 traits de style et leur stabilité ; lineup.py : qui prend le relais
   rallycross/    coût du joker, coût du 1er tour, moment du joker, simulateur Monte-Carlo,
                  models.py : modèle de victoire logistique + gradient boosting
   ml/            forecasting.py : Chronos-2, AutoGluon-TimeSeries, ETS / Theta / ARIMA
@@ -313,7 +373,8 @@ src/motorsport_lab/
                  CatBoost, Optuna, SHAP, intervalles conformes ; tabular.py : AutoGluon
                  seasons.py : tests à l'aveugle sur les 6 éditions (chaînage avant)
   reports.py     CSV + PNG ; cli.py : la commande `mlab` ; i18n.py : textes FR/EN
-app/streamlit_app.py   tableau de bord bilingue
+app/streamlit_app.py   tableau de bord bilingue (streamlit_app.py à la racine : cloud)
+notebooks/quickstart.ipynb   notebook Colab     .devcontainer/   GitHub Codespaces
 data/   données réelles traitées (CSV)      reports/   résultats ci-dessus
 ```
 
@@ -368,6 +429,29 @@ British GT et au Mans : Pi Toolbox, AiM, MoTeC, Magneti Marelli, Life Racing, Bo
   (analyse de télémétrie : accélérateur, frein, forces G, détection d'anomalies).
 
 ## Feuille de route
+
+### Comment améliorer les prédictions et la stratégie ensuite
+
+* **La météo comme entrée.** La plupart des tours lents et des neutralisations viennent de la
+  pluie, du brouillard ou de la nuit. La pluie, la température et la visibilité heure par heure au
+  Nürburgring (API historique d'Open-Meteo, gratuite) seraient la nouvelle variable la plus utile
+  pour toutes les prévisions ici.
+* **Les temps par secteur.** wige publie aussi un PDF *Sector Times* : il distingue une zone Code 60
+  dans un secteur du trafic ou d'une erreur de pilote, que le temps au tour mélange.
+* **Un modèle des neutralisations.** Un modèle de risque (analyse de survie) de « Code 60 / FCY dans
+  l'heure » permettrait au simulateur de stratégie de placer les arrêts sous neutralisation.
+* **Apprendre pendant la course, tour par tour.** Des modèles en ligne (filtre de Kalman,
+  bibliothèque `river`) qui mettent à jour le rythme et l'usure de chaque voiture à chaque tour, au
+  lieu de tout réentraîner.
+* **Un seul modèle pour toutes les courses.** Un modèle bayésien hiérarchique (PyMC) pilote ×
+  voiture × conditions sur toutes les éditions, au lieu d'une course à la fois.
+* **La télémétrie pour le vrai style du pilote.** Accélérateur, points de freinage et volant
+  (exports MoTeC / WinDarab, ou données de simulation ACC sur la Nordschleife) : c'est ce qui rend un
+  style assez stable pour construire une stratégie dessus.
+* **Apprentissage par renforcement sur un simulateur plus riche** (carburant, pneus, Code 60,
+  trafic), une fois ce simulateur vérifié sur de vraies courses.
+
+### Également prévu
 
 * Importer les exports CSV MoTeC / WinDarab et la télémétrie de simulation (mémoire partagée d'ACC,
   GT3 sur la Nordschleife) pour mesurer directement l'usure des pneus.

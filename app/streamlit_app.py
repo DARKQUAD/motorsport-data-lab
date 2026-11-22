@@ -10,6 +10,7 @@ import plotly.express as px
 import streamlit as st
 
 from motorsport_lab.endurance import laps as lp
+from motorsport_lab.endurance import lineup
 from motorsport_lab.endurance import strategy as strat
 from motorsport_lab.i18n import t
 from motorsport_lab.rallycross import analysis as rxa
@@ -225,3 +226,26 @@ elif page == "ml":
             png = ML / f"{name}.png"
             if png.exists():
                 st.image(str(png))
+
+    st.header(t("ml_lineup", lang))
+    st.markdown(t("ml_lineup_help", lang))
+    for name in ("style_stability", "style_within_race"):
+        csv = ML / f"{name}.csv"
+        if csv.exists():
+            st.dataframe(pd.read_csv(csv).round(3), use_container_width=True)
+    c1, c2, c3 = st.columns(3)
+    n_drivers = c1.slider(t("lineup_drivers", lang), 2, 4, 3)
+    min_stints = c2.slider(t("lineup_min", lang), 1, 19 // n_drivers, min(4, 19 // n_drivers))
+    prior_corr = c3.slider(t("lineup_corr", lang), 0.0, 1.0, 0.2, 0.05)
+
+    @st.cache_data
+    def _lineup(drivers: int, minimum: int, corr: float) -> pd.DataFrame:
+        params = lineup.LineupParams(drivers=drivers, min_stints=minimum, prior_corr=corr)
+        return lineup.compare(params, n=300)
+
+    st.dataframe(
+        _lineup(n_drivers, min_stints, float(prior_corr)).round(2), use_container_width=True
+    )
+    png = ML / "lineup_value_of_history.png"
+    if png.exists():
+        st.image(str(png))

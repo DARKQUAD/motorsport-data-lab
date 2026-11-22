@@ -97,6 +97,43 @@ def _seasons(out: Path, args: argparse.Namespace) -> pd.DataFrame:
     return scores
 
 
+def _style(out: Path) -> pd.DataFrame:
+    from . import reports
+    from .endurance import driver_style, lineup
+    from .ml.seasons import load_all
+
+    laps = load_all(ROOT / "data" / "n24")
+    driver_style.stability(laps).to_csv(out / "style_stability.csv", index=False)
+    driver_style.within_race_reliability(laps).to_csv(out / "style_within_race.csv", index=False)
+    driver_style.profiles(laps[laps["season"] == laps["season"].max()]).to_csv(
+        out / "style_profiles_latest.csv", index=False
+    )
+    params = lineup.LineupParams()
+    scores = lineup.compare(params, n=2000)
+    scores.to_csv(out / "lineup_policies.csv", index=False)
+    history = lineup.value_of_history(params, n=1000)
+    history.to_csv(out / "lineup_value_of_history.csv", index=False)
+    reports.lineup_figure(history, out / "lineup_value_of_history.png")
+    return scores
+
+
+def _rx_win(out: Path) -> pd.DataFrame:
+    from .rallycross import models as rx
+    from .rallycross.analysis import per_race
+
+    rx_dir = ROOT / "data" / "rx_france"
+    table = rx.win_table(per_race(pd.read_csv(rx_dir / "rx_france_2026_laps.csv")))
+    rx.odds_ratios(table).to_csv(out / "rx_win_odds_ratios.csv", index=False)
+    scores = rx.cross_validate(table)
+    scores.to_csv(out / "rx_win_cv.csv", index=False)
+    other = rx_dir / "rx_france_2026_other_categories_laps.csv"
+    if other.exists():  # blind test on Division 3 / 4 / 5 and Féminines
+        unseen = rx.win_table(per_race(pd.read_csv(other)))
+        rx.holdout(table, unseen).to_csv(out / "rx_win_holdout.csv", index=False)
+        rx.odds_ratios(unseen).to_csv(out / "rx_win_odds_ratios_holdout.csv", index=False)
+    return scores
+
+
 def _ml(args: argparse.Namespace) -> None:
     from . import reports
     from .endurance.laps import annotate
@@ -132,6 +169,8 @@ def _ml(args: argparse.Namespace) -> None:
         reports.shap_figure(shap, out / "classic_shap.png")
     elif args.task == "seasons":
         scores = _seasons(out, args)
+    elif args.task == "style":
+        scores = _style(out)
     elif args.task == "ratings":
         from .endurance.ratings import driver_ratings
 
@@ -142,19 +181,7 @@ def _ml(args: argparse.Namespace) -> None:
         )
         reports.ratings_figure(scores, out / "driver_ratings.png")
     else:
-        from .rallycross import models as rx
-        from .rallycross.analysis import per_race
-
-        rx_dir = ROOT / "data" / "rx_france"
-        table = rx.win_table(per_race(pd.read_csv(rx_dir / "rx_france_2026_laps.csv")))
-        rx.odds_ratios(table).to_csv(out / "rx_win_odds_ratios.csv", index=False)
-        scores = rx.cross_validate(table)
-        scores.to_csv(out / "rx_win_cv.csv", index=False)
-        other = rx_dir / "rx_france_2026_other_categories_laps.csv"
-        if other.exists():  # blind test on Division 3 / 4 / 5 and Féminines
-            unseen = rx.win_table(per_race(pd.read_csv(other)))
-            rx.holdout(table, unseen).to_csv(out / "rx_win_holdout.csv", index=False)
-            rx.odds_ratios(unseen).to_csv(out / "rx_win_odds_ratios_holdout.csv", index=False)
+        scores = _rx_win(out)
     print(scores.round(3).to_string(index=False))
 
 
@@ -176,7 +203,7 @@ def main(argv: list[str] | None = None) -> None:
     p.set_defaults(func=_report)
     p = sub.add_parser("ml", help="models and statistics (needs the [ml] / [models] extras)")
     p.add_argument(
-        "task", choices=["forecast", "tabular", "classic", "ratings", "rx-win", "seasons"]
+        "task", choices=["forecast", "tabular", "classic", "ratings", "rx-win", "seasons", "style"]
     )
     p.add_argument("--time-limit", type=int, default=120, help="AutoGluon budget (s)")
     p.add_argument(

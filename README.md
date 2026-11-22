@@ -19,10 +19,23 @@ ML: **Chronos-2**, **AutoGluon** (AWS), LightGBM, XGBoost, CatBoost, statsforeca
 | **Pit-strategy simulator** (Monte-Carlo, 24 h) | calibrated on the real race | predicts 157 laps; the real GT3 winner did 156 |
 | **Machine learning**: Chronos-2, AutoGluon, gradient boosting, ETS / ARIMA, conformal intervals, SHAP | rolling backtest, time split | an honest result, with confidence intervals |
 | **Statistics**: mixed-effects driver ratings, logistic model of rallycross wins | statsmodels | who is fast in their car; what the joker timing is worth |
+| **Who drives next?** Driver style from timing data, and a driver-choice agent that learns each driver's pace during the race (Bayesian bandit / RL) | simulator calibrated on the 6 races | +196 s over a fixed rotation; last year's style alone barely helps |
 | **Bilingual Streamlit app** (FR/EN) | `app/streamlit_app.py` | every chart, interactive |
 
 No data is invented: everything comes from the public documents of the official timekeepers.
 The data is downloaded and parsed by the code in `src/motorsport_lab/sources/`.
+
+---
+
+## Try it without installing anything
+
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/DARKQUAD/motorsport-data-lab/blob/main/notebooks/quickstart.ipynb) [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/DARKQUAD/motorsport-data-lab?quickstart=1)
+
+| Where | What you get | What you need |
+|---|---|---|
+| **Google Colab** | a notebook that fetches the repo and runs the main analyses: pace, pit stops, joker cost, model zoo, blind test across seasons, who drives next | a free Google account |
+| **GitHub Codespaces** | the whole project in VS Code in the browser; the app starts on its own (port 8501) | a free GitHub account (60 h / month included) |
+| **Streamlit Community Cloud** | a public link to the app | `streamlit_app.py` and `requirements.txt` are ready; the repo owner deploys it in one click |
 
 ---
 
@@ -235,6 +248,47 @@ What the other years change:
   picks the winner in **61 %** of the unseen races (log loss 0.156 vs 0.271 for no model) and stays
   ahead of gradient boosting (58 %).
 
+**3f. Driver style, and who should drive the next stint?** Can a strategy adapt to each
+driver's style? From timing data alone, a driver's style is seen through five traits measured
+against their own car and corrected for track conditions: pace, consistency, fade along a stint,
+night delta and cold-tyre lap ([profiles](reports/ml/style_profiles_latest.csv)).
+
+* **Between races, none of the five traits carries over.** Spearman correlation of each trait from
+  one edition to the next: pace 0.19 / −0.11, consistency 0.03 / 0.14, stint fade 0.23 / −0.11,
+  night delta 0.39 / −0.11, cold-tyre lap 0.19 / 0.01 (2022 → 2023 / 2023 → 2026, 16 to 29
+  drivers in both races). A driver does 10 to 40 clean laps in a 24 h race, and changes car and
+  team-mates from year to year: one race's style is mostly noise. Tailoring a strategy to last
+  year's style would be tailoring it to noise.
+* **Within one race, pace does carry over.** A driver's pace in the first 12 hours predicts the
+  next 12 hours: Spearman 0.54 (2022, 60 drivers), 0.29 (2023, 63), 0.28 (2026, 39).
+
+So the useful thing to learn is the drivers' pace **during the race**. At each stop the team picks
+the next driver under the rules (every driver drives at least 4 stints, at most 2 in a row): a
+constrained multi-armed bandit, the simplest form of reinforcement learning. The simulator is
+calibrated on the measurements above (driver spread 4.0 s, night spread 4.3 s, stint-to-stint form
+4.5 s so that the within-race reliability matches the measured ~0.38). 2,000 simulated 24 h races,
+3 drivers, gain over a fixed rotation:
+
+| Policy | Time gained | 95 % range | Races better than rotation |
+|---|---|---|---|
+| Last race's profile only | +52 s | [−571; +632] | 56 % |
+| Learn during the race (Bayesian update, greedy) | +183 s | [−282; +697] | 76 % |
+| Thompson sampling (explores more) | +151 s | [−287; +622] | 75 % |
+| **Last race as a weak prior + learn during the race** | **+196 s (0.4 lap)** | [−278; +715] | **77 %** |
+| Knows every driver's true pace (upper bound) | +323 s | [−143; +832] | 91 % |
+
+![Who drives next](reports/ml/lineup_value_of_history.png)
+
+* Learning during the race captures **60 % of the possible gain**; last year's profile alone, 16 %.
+  The extra exploration of Thompson sampling does not pay: the minimum-stint rule already forces
+  every driver into the car.
+* The chart shows when history would start to pay: only if last race's profile predicted this race
+  with a correlation above ~0.5. That is far above anything measured here, which is the case for
+  telemetry (braking points, throttle traces), not for lap times.
+* What this is not: a validated tool. The gain comes from a simulator built on measured spreads,
+  and the true counterfactual (what would have happened with another driver) is never observed.
+  You can change the rules in the app or in the notebook.
+
 Limits, stated plainly: laps capped at 2× the car's reference (red-flag laps of
 several hours cannot be forecast); the "clean lap" flag is computed on the whole race, which
 slightly favours the baselines.
@@ -264,6 +318,7 @@ official documents, or to rerun the AI experiments:
 .venv\Scripts\mlab ml classic                # model zoo + Optuna + SHAP + conformal (~2 min)
 .venv\Scripts\mlab ml ratings                # mixed-effects driver ratings
 .venv\Scripts\mlab ml rx-win                 # rallycross win model (+ blind test)
+.venv\Scripts\mlab ml style                  # driver style + who drives next
 .venv\Scripts\mlab ml seasons --models last_clean_lap,median_5_clean_laps,auto_ets,auto_theta   # blind test on 6 editions
 .venv\Scripts\mlab ml forecast               # ETS / Theta / ARIMA backtest (~1 min)
 .venv\Scripts\python -m pip install -e ".[ml]"   # Chronos-2, AutoGluon, PyTorch (CPU is fine)
@@ -290,7 +345,8 @@ src/motorsport_lab/
     its_rallycross.py  French rallycross: public ITS Chrono API + heat PDFs (laps, joker splits)
     alkamel.py         FIA WEC / Le Mans Analysis CSV (Al Kamel)
   endurance/     stints, pit stops, track index, driver deltas, Monte-Carlo pit strategy,
-                 ratings.py: mixed-effects driver ratings
+                 ratings.py: mixed-effects driver ratings; driver_style.py: style
+                 traits and their stability; lineup.py: who drives next (bandit / RL)
   rallycross/    joker cost, lap-1 cost, joker timing, Monte-Carlo joker simulator,
                  models.py: logistic + gradient-boosting win model
   ml/            forecasting.py: Chronos-2, AutoGluon-TimeSeries, ETS / Theta / ARIMA
@@ -298,7 +354,8 @@ src/motorsport_lab/
                  Optuna, SHAP, conformal intervals; tabular.py: AutoGluon-Tabular
                  seasons.py: blind tests across the 6 editions (forward chaining)
   reports.py     CSV + PNG; cli.py: the `mlab` command; i18n.py: FR/EN texts
-app/streamlit_app.py   bilingual dashboard
+app/streamlit_app.py   bilingual dashboard (streamlit_app.py at the root: cloud entry)
+notebooks/quickstart.ipynb   Colab notebook     .devcontainer/   GitHub Codespaces
 data/   processed real data (CSV)      reports/   results shown above
 ```
 
@@ -353,6 +410,27 @@ data services: Pi Toolbox, AiM, MoTeC, Magneti Marelli, Life Racing, Bosch WinDa
   (telemetry-level analysis: throttle, brake, G-forces, anomaly detection).
 
 ## Roadmap
+
+### How predictions and strategy could improve next
+
+* **Weather as an input.** Most slow laps and neutralisations are rain, fog or night. Hourly
+  rain, temperature and visibility at the Nürburgring (Open-Meteo historical API, free) would be
+  the single most useful new covariate for every forecast here.
+* **Sector times.** wige also publishes a *Sector Times* PDF: it separates a Code 60 zone in one
+  sector from traffic or a driver error, which lap times mix together.
+* **A model of neutralisations.** A hazard (survival) model of "Code 60 / full-course yellow in
+  the next hour" would let the strategy simulator time pit stops under neutralisation.
+* **Learning during the race, lap by lap.** Online models (Kalman filter, the `river` library)
+  that update each car's pace and tyre fade as laps arrive, instead of refitting.
+* **One model for all races.** A hierarchical Bayesian model (PyMC) of driver × car × conditions
+  across every edition, instead of one race at a time.
+* **Telemetry for real driver style.** Throttle, braking points and steering (MoTeC / WinDarab
+  exports, or sim-racing data from ACC on the Nordschleife) are what make a style stable enough to
+  build a strategy on.
+* **Reinforcement learning on a richer simulator** (fuel, tyres, Code 60, traffic), once that
+  simulator is checked against real races.
+
+### Also planned
 
 * Import MoTeC / WinDarab CSV exports and sim-racing telemetry (ACC shared memory, GT3 at the
   Nordschleife) to measure tyre wear directly.

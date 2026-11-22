@@ -250,3 +250,27 @@ def seasons_figure(scores: pd.DataFrame, path: Path) -> None:
     ax.legend(fontsize=6, ncol=2, frameon=False)
     _style(ax, "Next-lap error on each unseen 24h race", "test season", "MAE (s, log scale)")
     _save(fig, path)
+
+
+def lineup_figure(history: pd.DataFrame, path: Path) -> None:
+    """Time gained vs a fixed rotation as last race's driver profile gets more reliable."""
+    fig, ax = _figure(7, 3.4)
+    styles = {
+        "last_race_s": ("last race's profile only", MUTED, "--"),
+        "learn_greedy_s": ("learn during the race", ACCENT2, "-"),
+        "thompson_s": ("Thompson sampling (explores)", ACCENT2, ":"),
+        "history_learn_s": ("last race + learn during the race", ACCENT, "-"),
+        "oracle_s": ("knows the truth (upper bound)", INK, "-."),
+    }
+    for col, (label, color, ls) in styles.items():
+        ax.plot(history["prior_corr"], history[col], marker="o", color=color, ls=ls, label=label)
+    ax.axvspan(0.07, 0.37, color=GRID, alpha=0.7, label="measured between real races")
+    ax.axhline(0, color=MUTED, lw=0.8)
+    ax.legend(fontsize=7, frameon=False)
+    _style(
+        ax,
+        "Who drives next? Seconds gained over 24 h vs a fixed rotation",
+        "how well last race's driver profile predicts this race (correlation)",
+        "seconds gained",
+    )
+    _save(fig, path)

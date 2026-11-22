@@ -301,6 +301,33 @@ TEXT: dict[str, dict[str, str]] = {
             "historique ne peut les prévoir."
         ),
     },
+    "ml_lineup": {
+        "en": "6. Driver style and who drives the next stint",
+        "fr": "6. Style des pilotes et qui prend le prochain relais",
+    },
+    "ml_lineup_help": {
+        "en": (
+            "First table: does a driver's style (pace, consistency, stint fade, night delta, "
+            "cold-tyre lap) in one race predict it in the next? Second: does it hold within a "
+            "race? Then a simulator: at each stop, choose the next driver by learning every "
+            "driver's pace during the race (Bayesian update, Thompson sampling) and compare "
+            "with a fixed rotation. Change the rules below."
+        ),
+        "fr": (
+            "Premier tableau : le style d'un pilote (rythme, régularité, baisse en fin de "
+            "relais, écart de nuit, tour pneus froids) sur une course prédit-il la suivante ? "
+            "Deuxième : tient-il au sein d'une même course ? Puis un simulateur : à chaque "
+            "arrêt, choisir le prochain pilote en apprenant le rythme de chacun pendant la "
+            "course (mise à jour bayésienne, Thompson sampling), comparé à une rotation fixe. "
+            "Change les règles ci-dessous."
+        ),
+    },
+    "lineup_drivers": {"en": "Drivers per car", "fr": "Pilotes par voiture"},
+    "lineup_min": {"en": "Minimum stints per driver", "fr": "Relais minimum par pilote"},
+    "lineup_corr": {
+        "en": "How well last race predicts this one",
+        "fr": "Fiabilité du profil de la course précédente",
+    },
     "ml_rx": {
         "en": "4. Rallycross: what wins a race?",
         "fr": "4. Rallycross : qu'est-ce qui fait gagner ?",

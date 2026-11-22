@@ -34,6 +34,7 @@ ALL_MODELS = (
     "auto_arima_x",
     "chronos2",
     "autogluon",
+    "autogluon_best",
 )
 
 
@@ -118,8 +119,13 @@ def chronos2(
     return pd.Series(pred.reindex(keys).to_numpy(), index=future.index)
 
 
-def autogluon(history: pd.DataFrame, future: pd.DataFrame, time_limit: int = 120) -> pd.Series:
-    """AutoGluon-TimeSeries (fast preset) with the pit laps as known covariates."""
+def autogluon(
+    history: pd.DataFrame,
+    future: pd.DataFrame,
+    time_limit: int = 120,
+    presets: str = "fast_training",
+) -> pd.Series:
+    """AutoGluon-TimeSeries, pit laps as known covariates (``best_quality`` = every model)."""
     from autogluon.timeseries import TimeSeriesDataFrame, TimeSeriesPredictor
 
     train = TimeSeriesDataFrame.from_data_frame(history[["item_id", "timestamp", "target", *KNOWN]])
@@ -132,7 +138,7 @@ def autogluon(history: pd.DataFrame, future: pd.DataFrame, time_limit: int = 120
         freq="min",
         verbosity=0,
         path=None,
-    ).fit(train, presets="fast_training", time_limit=time_limit, enable_ensemble=True)
+    ).fit(train, presets=presets, time_limit=time_limit, enable_ensemble=True)
     pred = predictor.predict(train, known_covariates=known)["mean"]
     keys = pd.MultiIndex.from_frame(future[["item_id", "timestamp"]])
     return pd.Series(pred.reindex(keys).to_numpy(), index=future.index)
@@ -208,6 +214,7 @@ def backtest(
         "median_5_clean_laps": lambda h, f: baseline(h, f, 5),
         "chronos2": chronos2,
         "autogluon": lambda h, f: autogluon(h, f, ag_time_limit),
+        "autogluon_best": lambda h, f: autogluon(h, f, ag_time_limit, "best_quality"),
         "auto_ets": lambda h, f: statistical(h, f, "auto_ets"),
         "auto_theta": lambda h, f: statistical(h, f, "auto_theta"),
         "auto_arima_x": lambda h, f: statistical(h, f, "auto_arima_x"),

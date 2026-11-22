@@ -66,13 +66,15 @@ def season_table(laps: pd.DataFrame) -> pd.DataFrame:
     return table
 
 
-def _autogluon_tabular(train: pd.DataFrame, test: pd.DataFrame, time_limit: int) -> np.ndarray:
+def _autogluon_tabular(
+    train: pd.DataFrame, test: pd.DataFrame, time_limit: int, presets: str
+) -> np.ndarray:
     from autogluon.tabular import TabularPredictor
 
     predictor = TabularPredictor(
         label="lap_time_s", eval_metric="mean_absolute_error", verbosity=0, path=None
     )
-    predictor.fit(train[[*FEATURES, "lap_time_s"]], presets="medium_quality", time_limit=time_limit)
+    predictor.fit(train[[*FEATURES, "lap_time_s"]], presets=presets, time_limit=time_limit)
     return np.asarray(predictor.predict(test[FEATURES]))
 
 
@@ -80,6 +82,7 @@ def next_lap(
     table: pd.DataFrame,
     models: Sequence[str] = ZOO,
     autogluon_time_limit: int = 0,
+    autogluon_presets: str = "medium_quality",
 ) -> pd.DataFrame:
     """Per-lap absolute errors: train on every season before ``s``, test on season ``s``."""
     seasons = sorted(table["season"].unique())
@@ -93,7 +96,8 @@ def next_lap(
         for name in models:
             preds[name] = fit_predict(name, train[FEATURES], train["lap_time_s"], test[FEATURES])
         if autogluon_time_limit > 0:
-            preds["autogluon_tabular"] = _autogluon_tabular(train, test, autogluon_time_limit)
+            name = "autogluon_tabular" + ("_best" if autogluon_presets == "best_quality" else "")
+            preds[name] = _autogluon_tabular(train, test, autogluon_time_limit, autogluon_presets)
         y = test["lap_time_s"].to_numpy(float)
         for name, p in preds.items():
             frames.append(
