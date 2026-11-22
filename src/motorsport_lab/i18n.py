@@ -39,8 +39,8 @@ TEXT: dict[str, dict[str, str]] = {
         "fr": "Rallycross France",
     },
     "ml": {
-        "en": "AI forecasting (Chronos-2 / AutoGluon)",
-        "fr": "Prévision IA (Chronos-2 / AutoGluon)",
+        "en": "Machine learning & statistics",
+        "fr": "Machine learning et statistiques",
     },
     "glossary": {
         "en": "Glossary in 30 seconds",
@@ -220,19 +220,87 @@ TEXT: dict[str, dict[str, str]] = {
     },
     "ml_intro": {
         "en": (
-            "Question: *what lap times will each GT3 do until its next stop?* Rolling "
-            "backtest on the 2026 race (5 cut-offs, 8-lap horizon). Grey = race-engineer "
-            "baselines, blue = AI models."
+            "Every model is compared with a simple race-engineer rule on data it never saw. "
+            "Grey bars = simple rules, blue = models. An interval that does not cross zero "
+            "means the difference is real, not luck."
         ),
         "fr": (
-            "Question : *quels temps au tour chaque GT3 va-t-elle faire jusqu'à son prochain "
-            "arrêt ?* Backtest glissant sur la course 2026 (5 instants de coupure, horizon 8 "
-            "tours). Gris = références d'ingénieur, bleu = modèles d'IA."
+            "Chaque modèle est comparé à une règle simple d'ingénieur, sur des données qu'il "
+            "n'a jamais vues. Barres grises = règles simples, bleues = modèles. Un intervalle "
+            "qui ne touche pas zéro veut dire que l'écart est réel, pas de la chance."
         ),
     },
     "no_ml": {
-        "en": "Run `mlab ml forecast` and `mlab ml tabular` to create these results.",
-        "fr": "Lance `mlab ml forecast` et `mlab ml tabular` pour créer ces résultats.",
+        "en": "Run `mlab ml forecast` (and `classic`, `ratings`, `rx-win`) to create results.",
+        "fr": "Lance `mlab ml forecast` (puis `classic`, `ratings`, `rx-win`) pour les créer.",
+    },
+    "ml_forecast": {
+        "en": "1. Forecast the next stint (8 laps)",
+        "fr": "1. Prévoir le prochain relais (8 tours)",
+    },
+    "ml_forecast_help": {
+        "en": (
+            "Chronos-2 and AutoGluon (Amazon) against classical statistics (ETS, Theta, "
+            "ARIMA from statsforecast) and the 'same as the last clean lap' rule. "
+            "Rolling backtest: 5 cut-offs in the 2026 race."
+        ),
+        "fr": (
+            "Chronos-2 et AutoGluon (Amazon) face aux statistiques classiques (ETS, Theta, "
+            "ARIMA de statsforecast) et à la règle « comme le dernier tour propre ». "
+            "Backtest glissant : 5 instants de coupure dans la course 2026."
+        ),
+    },
+    "ml_next_lap": {
+        "en": "2. Predict the next lap: the model zoo",
+        "fr": "2. Prédire le tour suivant : le zoo de modèles",
+    },
+    "ml_next_lap_help": {
+        "en": (
+            "Trained on hours 0-16, tested on hours 16-24. Ridge, Huber, random forest, "
+            "LightGBM, XGBoost, CatBoost, LightGBM tuned with Optuna, AutoGluon. SHAP "
+            "explains the prediction; conformal intervals give an 80 % band whose coverage "
+            "is checked on the unseen hours."
+        ),
+        "fr": (
+            "Entraîné sur les heures 0-16, testé sur les heures 16-24. Ridge, Huber, forêt "
+            "aléatoire, LightGBM, XGBoost, CatBoost, LightGBM réglé avec Optuna, AutoGluon. "
+            "SHAP explique la prédiction ; les intervalles conformes donnent une fourchette "
+            "à 80 % dont la couverture est vérifiée sur les heures jamais vues."
+        ),
+    },
+    "ml_drivers": {
+        "en": "3. Driver ratings (mixed-effects model)",
+        "fr": "3. Note des pilotes (modèle à effets mixtes)",
+    },
+    "ml_drivers_help": {
+        "en": (
+            "Seconds per lap faster (<0) or slower (>0) than expected in their car, with a "
+            "90 % interval. Drivers with few laps are pulled towards 0 (partial pooling), so "
+            "6 lucky laps cannot top the table."
+        ),
+        "fr": (
+            "Secondes par tour plus rapide (<0) ou plus lent (>0) qu'attendu dans sa voiture, "
+            "avec un intervalle à 90 %. Un pilote avec peu de tours est ramené vers 0 "
+            "(regroupement partiel) : 6 tours chanceux ne suffisent pas pour être en tête."
+        ),
+    },
+    "ml_rx": {
+        "en": "4. Rallycross: what wins a race?",
+        "fr": "4. Rallycross : qu'est-ce qui fait gagner ?",
+    },
+    "ml_rx_help": {
+        "en": (
+            "Logistic regression: odds of winning by joker timing at equal pace (odds ratio "
+            "> 1 = better than a mid-race joker). Then three classifiers, each tested on a "
+            "whole meeting it never saw. This is a link, not proof of cause: leaders can "
+            "choose to joker late."
+        ),
+        "fr": (
+            "Régression logistique : chances de gagner selon le moment du joker, à rythme "
+            "égal (rapport de cotes > 1 = mieux qu'un joker en milieu de course). Puis trois "
+            "classifieurs, chacun testé sur un meeting entier jamais vu. C'est un lien, pas "
+            "une preuve de cause : les leaders peuvent choisir de jokerer tard."
+        ),
     },
 }
 

@@ -26,6 +26,15 @@ import pandas as pd
 HORIZON = 8
 START = pd.Timestamp("2026-01-01")
 KNOWN = ["in_pit", "out_lap"]
+ALL_MODELS = (
+    "last_clean_lap",
+    "median_5_clean_laps",
+    "auto_ets",
+    "auto_theta",
+    "auto_arima_x",
+    "chronos2",
+    "autogluon",
+)
 
 
 CAP = 2.0  # laps slower than 2x the car's reference (red flag, garage repairs) are capped
@@ -129,6 +138,51 @@ def autogluon(history: pd.DataFrame, future: pd.DataFrame, time_limit: int = 120
     return pd.Series(pred.reindex(keys).to_numpy(), index=future.index)
 
 
+def statistical(history: pd.DataFrame, future: pd.DataFrame, model: str) -> pd.Series:
+    """Classical per-car forecasts with Nixtla statsforecast.
+
+    * ``auto_ets`` / ``auto_theta``: fitted on each car's clean laps only (the green-flag
+      pace level and its drift), then the typical in-lap / out-lap loss is added on the
+      planned stops, like the race-engineer baseline;
+    * ``auto_arima_x``: AutoARIMA on the full (capped) lap series with the pit laps as
+      exogenous regressors.
+    """
+    from statsforecast import StatsForecast
+    from statsforecast.models import AutoARIMA, AutoETS, AutoTheta, Naive
+
+    keys = pd.MultiIndex.from_frame(future[["item_id", "timestamp"]])
+    if model == "auto_arima_x":
+        train = history.rename(columns={"item_id": "unique_id", "timestamp": "ds", "target": "y"})
+        x_future = future.rename(columns={"item_id": "unique_id", "timestamp": "ds"})
+        sf = StatsForecast(
+            models=[AutoARIMA(max_p=3, max_q=2)], freq="min", n_jobs=1, fallback_model=Naive()
+        )
+        pred = sf.forecast(
+            df=train[["unique_id", "ds", "y", *KNOWN]],
+            h=HORIZON,
+            X_df=x_future[["unique_id", "ds", *KNOWN]],
+        )
+        pred = pred.set_index(["unique_id", "ds"])["AutoARIMA"]
+        return pd.Series(pred.reindex(keys).to_numpy(), index=future.index)
+    clean = history[history["clean"]].copy()
+    clean["ds"] = clean.groupby("item_id").cumcount()
+    clean = clean.rename(columns={"item_id": "unique_id", "target": "y"})
+    stat = {"auto_ets": AutoETS(model="ZZN"), "auto_theta": AutoTheta()}[model]
+    sf = StatsForecast(models=[stat], freq=1, n_jobs=1, fallback_model=Naive())
+    level = sf.forecast(df=clean[["unique_id", "ds", "y"]], h=HORIZON)
+    level["step"] = level.groupby("unique_id").cumcount()
+    column = str(stat)
+    in_off, out_off = _pit_offsets(history)
+    step = future.groupby("item_id").cumcount()
+    base = level.set_index(["unique_id", "step"])[column]
+    lookup = pd.MultiIndex.from_arrays([future["item_id"], step])
+    values = base.reindex(lookup).to_numpy()
+    return pd.Series(
+        values + future["in_pit"].to_numpy() * in_off + future["out_lap"].to_numpy() * out_off,
+        index=future.index,
+    )
+
+
 _MODELS: dict[str, Any] = {}
 
 
@@ -150,6 +204,9 @@ def backtest(
         "median_5_clean_laps": lambda h, f: baseline(h, f, 5),
         "chronos2": chronos2,
         "autogluon": lambda h, f: autogluon(h, f, ag_time_limit),
+        "auto_ets": lambda h, f: statistical(h, f, "auto_ets"),
+        "auto_theta": lambda h, f: statistical(h, f, "auto_theta"),
+        "auto_arima_x": lambda h, f: statistical(h, f, "auto_arima_x"),
     }
     frames = []
     for cutoff in cutoffs:
@@ -168,11 +225,7 @@ def backtest(
 
 def score(results: pd.DataFrame, models: list[str] | None = None) -> pd.DataFrame:
     """MAE (s) per model on all laps, clean laps and pit laps, plus skill vs the best baseline."""
-    models = models or [
-        c
-        for c in results.columns
-        if c in {"last_clean_lap", "median_5_clean_laps", "chronos2", "autogluon"}
-    ]
+    models = models or [c for c in results.columns if c in ALL_MODELS]
     pit = (results["in_pit"] > 0) | (results["out_lap"] > 0)
     rows = []
     for m in models:

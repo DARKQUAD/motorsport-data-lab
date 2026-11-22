@@ -4,7 +4,7 @@
 24 Heures du Nürburgring (et au Mans), et le Championnat de France de Rallycross.**
 
 [🇬🇧 English version](README.md) · Python 3.11–3.13 · licence MIT ·
-IA : **Amazon Chronos-2** et **AutoGluon** (outils open source d'AWS)
+ML : **Chronos-2**, **AutoGluon** (AWS), LightGBM, XGBoost, CatBoost, statsforecast, statsmodels, Optuna, SHAP
 
 ---
 
@@ -15,7 +15,8 @@ IA : **Amazon Chronos-2** et **AutoGluon** (outils open source d'AWS)
 | **4 445 tours de 43 GT3**, 24h du Nürburgring 2026 | PDF officiels ADAC / wige | relais, arrêts, conditions de piste, rythme par modèle, pilotes vs coéquipiers |
 | **6 196 lignes de tours sur 7 meetings**, Championnat de France de Rallycross 2026 (Supercar + Super 1600) | résultats officiels ITS Chrono / FFSA | coût du joker par circuit, quand les pilotes le prennent, simulateur de stratégie joker |
 | **Simulateur de stratégie** (Monte-Carlo, 24 h) | calibré sur la vraie course | prédit 157 tours ; la GT3 gagnante en a fait 156 |
-| **Prévision IA** : Chronos-2 et AutoGluon contre les références d'ingénieur | backtest glissant | un résultat honnête, avec intervalles de confiance |
+| **Machine learning** : Chronos-2, AutoGluon, gradient boosting, ETS / ARIMA, intervalles conformes, SHAP | backtest glissant, découpage temporel | un résultat honnête, avec intervalles de confiance |
+| **Statistiques** : note des pilotes par modèle mixte, modèle logistique des victoires en rallycross | statsmodels | qui est rapide dans sa voiture ; ce que vaut le moment du joker |
 | **Appli Streamlit bilingue** (FR/EN) | `app/streamlit_app.py` | tous les graphiques, en interactif |
 
 Aucune donnée n'est inventée : tout vient des documents publics des chronométreurs officiels,
@@ -86,42 +87,105 @@ téléchargés et lus par le code de `src/motorsport_lab/sources/`.
   autre place, le prendre au 1er tour** pour éviter le trafic du premier virage. Les règles de trafic
   (de combien il faut être plus rapide pour doubler) sont des hypothèses modifiables dans l'appli.
 
-### 3. IA : Chronos-2 et AutoGluon contre l'ingénieur de course
+### 3. Machine learning et statistiques : beaucoup d'outils, un seul juge honnête
 
-**Question :** *quels temps au tour chaque GT3 va-t-elle faire jusqu'à son prochain arrêt
-(8 tours ≈ 70 min) ?* Cinq instants de coupure pendant la course (h4, h8, h12, h16, h20), 142 blocs
-voiture × coupure, 1 136 tours prévus. Les modèles savent à l'avance quels tours futurs sont des
-tours de stand (une équipe planifie ses arrêts).
+Chaque modèle ci-dessous est comparé à la règle simple qu'utiliserait un ingénieur de course, sur des
+données qu'il n'a jamais vues, avec un intervalle de **bootstrap par blocs** (on rééchantillonne des
+blocs entiers voiture × moment, car les tours d'une même voiture sont liés). Un intervalle qui ne
+touche pas zéro = une vraie différence.
 
-| Modèle | MAE, tous les tours | MAE, tours propres | MAE, tours de stand |
+**3a. Prévoir le prochain relais (8 tours ≈ 70 min).** Cinq instants de coupure pendant la course
+(h4 → h20), 142 blocs voiture × coupure, 1 136 tours prévus. Les modèles savent quels tours futurs
+sont des tours de stand (une équipe planifie ses arrêts).
+
+| Modèle | Famille | MAE, tous les tours | MAE, tours propres | MAE, tours de stand |
+|---|---|---|---|---|
+| **Chronos-2** (zero-shot, avec covariables) | modèle de fondation (Amazon) | **43,0 s** | 20,4 s | 62,3 s |
+| AutoTheta + perte au stand | statistiques (statsforecast) | 45,1 s | 12,7 s | 40,6 s |
+| AutoETS + perte au stand | statistiques (statsforecast) | 45,3 s | **12,3 s** | **39,8 s** |
+| Référence : dernier tour propre + perte au stand type | règle d'ingénieur | 46,0 s | 12,5 s | 40,1 s |
+| Référence : médiane des 5 derniers tours propres + perte au stand | règle d'ingénieur | 46,0 s | 12,5 s | 40,8 s |
+| AutoGluon-TimeSeries (preset rapide, ensemble) | AutoML (Amazon) | 54,6 s | 37,4 s | 67,1 s |
+| AutoARIMA avec les tours de stand en régresseurs | statistiques | 55,1 s | 39,1 s | 62,0 s |
+
+* Chronos-2 contre la référence : **−3,0 s, intervalle à 95 % [−6,5 ; +0,5], pas significatif** ; sur
+  les tours propres il est **significativement moins bon** (+7,9 s, [+4,3 ; +12,2]).
+* ETS et Theta sont **significativement meilleurs, mais de 0,7 à 0,9 s seulement** ([−1,2 ; −0,1] et
+  [−1,7 ; −0,1]), et pas sur les tours propres. ARIMA et AutoGluon sont significativement moins bons
+  ([tableau](reports/ml/forecast_significance.csv)).
+* **Conclusion :** en endurance 24h, l'incertitude principale vient des neutralisations, qu'aucun
+  historique de tours ne peut prévoir. Modéliser le rythme en piste verte par un simple lissage
+  exponentiel et ajouter la perte au stand connue vaut autant que le reste : un gros modèle n'apporte
+  rien ici.
+
+**3b. Prédire le tour suivant : le zoo de modèles.** Les mêmes entrées pour tous (modèle de voiture,
+numéro de pilote, tour dans le relais, heure de course, tour précédent, médiane des 3 derniers tours,
+indice de piste des 10 dernières minutes). Entraînement sur les heures 0–16, test sur 16–24.
+
+![Zoo de modèles](reports/ml/classic_scores.png)
+
+| Modèle | MAE, tous les tours en course | MAE, tours propres | écart au tour précédent, intervalle 95 % |
 |---|---|---|---|
-| **Chronos-2** (zero-shot, avec covariables) | **43,0 s** | 20,4 s | 62,3 s |
-| Référence : dernier tour propre + perte au stand type | 46,0 s | **12,5 s** | **40,1 s** |
-| Référence : médiane des 5 derniers tours propres + perte au stand | 46,0 s | 12,5 s | 40,8 s |
-| AutoGluon-TimeSeries (preset rapide, ensemble) | 54,6 s | 37,4 s | 67,1 s |
+| **LightGBM** (perte L1) | **31,4 s** | **8,4 s** | −12,1 s [−35,0 ; −0,4] |
+| LightGBM réglé avec **Optuna** (40 essais, validation = heures 12–16 seulement) | 31,4 s | 8,8 s | −12,0 s [−34,9 ; −0,4] |
+| HistGradientBoosting de scikit-learn | 31,7 s | 8,4 s | −11,8 s [−34,7 ; −0,0] |
+| CatBoost | 31,9 s | 8,5 s | −11,6 s [−34,5 ; +0,2] |
+| Régression de Huber (linéaire robuste) | 32,7 s | 10,5 s | −10,7 s [−33,8 ; +1,2] |
+| XGBoost | 32,9 s | 8,4 s | −10,6 s [−33,8 ; +1,5] |
+| AutoGluon-Tabular (preset moyen) | 33,6 s | 10,4 s | |
+| Régression ridge | 38,6 s | 18,3 s | −4,9 s [−26,5 ; +6,3] |
+| Référence : médiane des 3 derniers tours | 39,7 s | 13,6 s | −3,8 s [−20,8 ; +5,0] |
+| Forêt aléatoire | 42,6 s | 11,7 s | −0,9 s [−23,7 ; +12,8] |
+| Référence : même temps que le tour précédent | 43,5 s | 10,7 s | 0 |
 
-L'avance de Chronos-2 est-elle réelle ? Un **bootstrap apparié par blocs** (on rééchantillonne des
-blocs voiture × coupure) donne un écart de **−3,0 s, intervalle à 95 % [−6,5 ; +0,5]** : **pas
-significatif**. Sur les tours propres, Chronos-2 est **significativement moins bon** (+7,9 s,
-[+4,3 ; +12,2]). AutoGluon est significativement moins bon partout. **Conclusion :** en endurance 24h,
-l'incertitude principale vient des neutralisations, qu'aucun historique de tours ne peut prévoir. Une
-règle simple construite avec la connaissance du métier reste la référence pour le rythme en piste
-verte. Le modèle de fondation n'aide qu'en « couvrant » vers des tours plus lents.
+* Le gradient boosting gagne (LightGBM, HistGradientBoosting, CatBoost : moins de 0,5 s d'écart entre
+  eux), **devant AutoGluon**, et c'est la seule famille dont l'avance sur la référence est
+  significative. Les intervalles sont larges car quelques tours neutralisés coûtent des minutes.
+* **Le réglage Optuna n'a pas aidé** sur les heures de test : les meilleurs réglages sur les heures
+  12–16 ne se transposent pas à la nuit et au matin. C'est rapporté tel quel.
+* **SHAP** (TreeSHAP intégré à LightGBM) : l'indice de piste des 10 dernières minutes explique le
+  plus (19 s en moyenne), puis l'heure de course (15 s) et le tour précédent (9 s)
+  ([tableau](reports/ml/classic_shap.csv)).
+* **Prédiction conforme** (régression quantile conformalisée) : les fourchettes à 80 % brutes de
+  LightGBM ne contiennent que **27 %** des vrais tours des heures 16–24. Après calibration sur les
+  heures 12–16, elles en contiennent **75 %** (77 % des tours propres) pour un objectif de 80 %. Une
+  incertitude presque fiable ; l'écart restant vient de la course qui change entre les heures de
+  calibration et de test.
 
-**Modèle du prochain tour (AutoGluon-Tabular).** Entraînement sur les heures 0–16, test sur 16–24 :
+**3c. Note des pilotes par un modèle à effets mixtes** (statsmodels, REML). Chaque tour propre,
+corrigé par l'indice de piste = effet voiture + tour dans le relais + heure de course + **effet
+pilote** (aléatoire, partagé entre voitures) + bruit. Un pilote avec peu de tours est ramené vers
+zéro : 6 tours chanceux ne suffisent pas pour être en tête.
 
-| Modèle | MAE, tous les tours en course | MAE, tours propres |
+![Note des pilotes](reports/ml/driver_ratings.png)
+
+* 121 pilotes, 1 634 tours propres. L'écart entre pilotes est de **4,8 s par tour**, contre 6,6 s de
+  bruit d'un tour à l'autre : les pilotes expliquent **34 %** de la variance une fois la voiture
+  connue.
+* 19 pilotes sont significativement plus rapides qu'attendu dans leur voiture, et 19
+  significativement plus lents (intervalle à 90 %). Les notes concordent avec les écarts bruts entre
+  coéquipiers (corrélation 0,91), mais avec des barres d'erreur honnêtes
+  ([tableau](reports/ml/driver_ratings.csv)).
+
+**3d. Rallycross : qu'est-ce qui fait gagner ?** 85 classements de course ou de manche
+qualificative, 1 143 résultats de pilotes. Régression logistique (statsmodels, erreurs regroupées
+par course), à rythme égal :
+
+| Joker pris… | Chances de gagner vs un joker en milieu de course | Intervalle 95 % |
 |---|---|---|
-| **AutoGluon-Tabular** | **33,6 s** | **10,4 s** |
-| Régression linéaire | 38,5 s | 17,2 s |
-| Référence : même temps que le tour précédent | 43,5 s | 10,7 s |
+| au **dernier tour** | **× 2,1** | [1,2 ; 3,7] |
+| au **1er tour** | **× 0,27** | [0,09 ; 0,78] |
 
-AutoGluon réduit l'erreur de **23 %**. Les entrées les plus utiles sont le tour précédent, l'indice
-de piste des 10 dernières minutes, puis le modèle de voiture ([importance](reports/ml/tabular_importance.csv)).
+Puis une validation croisée qui met de côté **un meeting entier à la fois** : le modèle logistique
+complet (log loss 0,149, score de Brier 0,046, son favori gagne **64 %** des courses) bat le gradient
+boosting (0,153, 56 %) et un modèle « rythme seul » (0,155, 53 %). Avec 85 courses, un modèle simple et
+interprétable est le bon choix. C'est un **lien, pas une preuve de cause** : un leader en air libre
+peut choisir de jokerer tard, alors qu'un pilote coincé dans le trafic le prend au 1er tour pour s'en
+sortir. C'est justement ce qu'explore le simulateur de joker.
 
-Limites, dites clairement : une seule course ; tours plafonnés à 2× la référence de la voiture (un
-tour de drapeau rouge de plusieurs heures ne se prévoit pas) ; le repère « tour propre » est calculé
-sur toute la course, ce qui avantage un peu les références.
+Limites, dites clairement : une seule course de 24 h ; tours plafonnés à 2× la référence de la
+voiture (un tour de drapeau rouge de plusieurs heures ne se prévoit pas) ; le repère « tour propre »
+est calculé sur toute la course, ce qui avantage un peu les références.
 
 ---
 
@@ -143,9 +207,14 @@ reconstruire depuis les documents officiels, ou relancer les expériences d'IA :
 .venv\Scripts\mlab data rx --year 2026       # télécharge + lit les résultats ITS Chrono
 .venv\Scripts\mlab report n24                # tableaux + figures dans reports/n24
 .venv\Scripts\mlab report rx                 # tableaux + figures dans reports/rx_france
+.venv\Scripts\python -m pip install -e ".[models]"   # LightGBM, XGBoost, CatBoost, statsforecast, statsmodels, Optuna
+.venv\Scripts\mlab ml classic                # zoo de modèles + Optuna + SHAP + conforme (~2 min)
+.venv\Scripts\mlab ml ratings                # note des pilotes (modèle mixte)
+.venv\Scripts\mlab ml rx-win                 # modèle de victoire en rallycross
+.venv\Scripts\mlab ml forecast               # backtest ETS / Theta / ARIMA (~1 min)
 .venv\Scripts\python -m pip install -e ".[ml]"   # Chronos-2, AutoGluon, PyTorch (le CPU suffit)
-.venv\Scripts\mlab ml forecast               # ~10 min sur un CPU de portable
-.venv\Scripts\mlab ml tabular                # ~3 min
+.venv\Scripts\mlab ml forecast --models last_clean_lap,median_5_clean_laps,chronos2,autogluon   # ~10 min
+.venv\Scripts\mlab ml tabular                # AutoGluon-Tabular, ~3 min
 ```
 
 Le Mans : le site de chronométrage FIA WEC (Al Kamel Systems) liste un `23_Analysis_Race*.CSV` par
@@ -167,9 +236,13 @@ src/motorsport_lab/
     n24_wige.py        24h Nürburgring : tour par tour + classement par classe (PDF, wige)
     its_rallycross.py  rallycross France : API publique ITS Chrono + PDF de manche (tours, joker)
     alkamel.py         FIA WEC / Le Mans : CSV Analysis (Al Kamel)
-  endurance/     relais, arrêts, indice de piste, écarts pilotes, stratégie Monte-Carlo
-  rallycross/    coût du joker, coût du 1er tour, moment du joker, simulateur Monte-Carlo
-  ml/            backtest Chronos-2 + AutoGluon-TimeSeries, modèle AutoGluon-Tabular
+  endurance/     relais, arrêts, indice de piste, écarts pilotes, stratégie Monte-Carlo,
+                 ratings.py : note des pilotes par modèle mixte
+  rallycross/    coût du joker, coût du 1er tour, moment du joker, simulateur Monte-Carlo,
+                 models.py : modèle de victoire logistique + gradient boosting
+  ml/            forecasting.py : Chronos-2, AutoGluon-TimeSeries, ETS / Theta / ARIMA
+                 classic.py : ridge, Huber, forêt aléatoire, LightGBM, XGBoost,
+                 CatBoost, Optuna, SHAP, intervalles conformes ; tabular.py : AutoGluon
   reports.py     CSV + PNG ; cli.py : la commande `mlab` ; i18n.py : textes FR/EN
 app/streamlit_app.py   tableau de bord bilingue
 data/   données réelles traitées (CSV)      reports/   résultats ci-dessus
@@ -191,9 +264,9 @@ D'après des offres d'emploi, des CV d'ingénieurs et des prestataires (sources 
 | Acquisition et analyse des données voiture | **Bosch WinDarab** (ECU des GT3 Porsche, BMW, Audi), **MoTeC i2**, **Pi Toolbox (Cosworth)**, **AiM Race Studio**, Magneti Marelli, Life Racing | non public ; voir la feuille de route (import télémétrie) |
 | Réglage ECU / CAN | Bosch RaceCon, mapping des signaux CAN | — |
 | Chronométrage | Al Kamel (FIA WEC, Le Mans), wige (Nürburgring), ITS Chrono / All Tracks Timing (rallycross France) | ✅ un lecteur pour chacun |
-| Analyse et outils | **Python** et **MATLAB**, Excel, outils de stratégie maison | ✅ Python, pandas, NumPy, scikit-learn |
+| Analyse et outils | **Python** et **MATLAB**, Excel, outils de stratégie maison | ✅ Python, pandas, NumPy, scikit-learn, statsmodels |
 | Stratégie | simulation Monte-Carlo de course, fenêtres d'arrêt, scénarios de neutralisation (safety car) | ✅ simulateurs endurance + joker |
-| Prévision / ML | usage croissant du ML ; les modèles de fondation pour séries temporelles sont récents | ✅ Chronos-2, AutoGluon, backtest honnête |
+| Prévision / ML | usage croissant du ML ; les modèles de fondation pour séries temporelles sont récents | ✅ Chronos-2, AutoGluon, LightGBM / XGBoost / CatBoost, ETS / ARIMA, SHAP, intervalles conformes, backtest honnête |
 
 En rallycross, le travail est court et intense (courses de 4 à 7 tours). La data porte sur le départ
 et le premier virage, le choix du joker et les réglages entre les manches, avec des enregistreurs AiM

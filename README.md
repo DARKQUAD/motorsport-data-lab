@@ -4,7 +4,7 @@
 (and Le Mans), plus the French Rallycross Championship.**
 
 [🇫🇷 Version française](README.fr.md) · Python 3.11–3.13 · MIT licence ·
-AI: **Amazon Chronos-2** and **AutoGluon** (open-source tools from AWS)
+ML: **Chronos-2**, **AutoGluon** (AWS), LightGBM, XGBoost, CatBoost, statsforecast, statsmodels, Optuna, SHAP
 
 ![CI](https://github.com/DARKQUAD/motorsport-data-lab/actions/workflows/ci.yml/badge.svg)
 
@@ -17,7 +17,8 @@ AI: **Amazon Chronos-2** and **AutoGluon** (open-source tools from AWS)
 | **4,445 laps of 43 GT3 cars**, 24h Nürburgring 2026 | official ADAC / wige PDFs | stints, pit stops, track conditions, car-model pace, drivers vs team-mates |
 | **6,196 lap records of 7 rounds**, French Rallycross 2026 (Supercar + Super 1600) | official ITS Chrono / FFSA results | cost of the joker lap per track, when drivers take it, a joker-strategy simulator |
 | **Pit-strategy simulator** (Monte-Carlo, 24 h) | calibrated on the real race | predicts 157 laps; the real GT3 winner did 156 |
-| **AI forecasting**: Chronos-2 and AutoGluon vs race-engineer baselines | rolling backtest | an honest result, with confidence intervals |
+| **Machine learning**: Chronos-2, AutoGluon, gradient boosting, ETS / ARIMA, conformal intervals, SHAP | rolling backtest, time split | an honest result, with confidence intervals |
+| **Statistics**: mixed-effects driver ratings, logistic model of rallycross wins | statsmodels | who is fast in their car; what the joker timing is worth |
 | **Bilingual Streamlit app** (FR/EN) | `app/streamlit_app.py` | every chart, interactive |
 
 No data is invented: everything comes from the public documents of the official timekeepers.
@@ -86,41 +87,98 @@ The data is downloaded and parsed by the code in `src/motorsport_lab/sources/`.
   grid slot, take it on lap 1** to avoid the first-corner traffic. The traffic rules (how much faster
   you must be to pass) are assumptions you can change in the app.
 
-### 3. AI: Chronos-2 and AutoGluon vs the race engineer
+### 3. Machine learning and statistics: many tools, one honest yardstick
 
-**Question:** *what lap times will each GT3 do until its next stop (8 laps ≈ 70 min)?*
-Five cut-offs during the race (h4, h8, h12, h16, h20), 142 car-and-cut-off blocks, 1,136 laps
-forecast. The models know in advance which future laps are pit laps (a team plans its stops).
+Every model below is compared with the simple rule a race engineer would use, on data it never
+saw, with a **block bootstrap** interval (resampling whole car × time blocks, because laps of the
+same car are correlated). An interval that does not cross zero = a real difference.
 
-| Model | MAE, all laps | MAE, clean laps | MAE, pit laps |
+**3a. Forecast the next stint (8 laps ≈ 70 min).** Five cut-offs during the race (h4 → h20),
+142 car-and-cut-off blocks, 1,136 laps forecast. The models know which future laps are pit laps
+(a team plans its stops).
+
+| Model | Family | MAE, all laps | MAE, clean laps | MAE, pit laps |
+|---|---|---|---|---|
+| **Chronos-2** (zero-shot, with covariates) | foundation model (Amazon) | **43.0 s** | 20.4 s | 62.3 s |
+| AutoTheta + pit loss | statistics (statsforecast) | 45.1 s | 12.7 s | 40.6 s |
+| AutoETS + pit loss | statistics (statsforecast) | 45.3 s | **12.3 s** | **39.8 s** |
+| Baseline: last clean lap + typical pit loss | race-engineer rule | 46.0 s | 12.5 s | 40.1 s |
+| Baseline: median of 5 clean laps + pit loss | race-engineer rule | 46.0 s | 12.5 s | 40.8 s |
+| AutoGluon-TimeSeries (fast preset, ensemble) | AutoML (Amazon) | 54.6 s | 37.4 s | 67.1 s |
+| AutoARIMA with pit laps as regressors | statistics | 55.1 s | 39.1 s | 62.0 s |
+
+* Chronos-2 vs the baseline: **−3.0 s, 95 % interval [−6.5; +0.5], not significant**; on clean laps
+  it is **significantly worse** (+7.9 s, [+4.3; +12.2]).
+* ETS and Theta are **significantly better, but only by 0.7–0.9 s** ([−1.2; −0.1] and [−1.7; −0.1]),
+  and not on clean laps. ARIMA and AutoGluon are significantly worse
+  ([table](reports/ml/forecast_significance.csv)).
+* **Conclusion:** on 24h data the main uncertainty is neutralisations, which no lap history can
+  foresee. Fitting the green-flag pace with simple exponential smoothing and adding the known pit
+  loss is as good as anything; a big model is not worth it here.
+
+**3b. Predict the next lap: the model zoo.** Same features for everyone (car model, driver slot,
+lap in stint, race hour, previous lap, median of the last 3 laps, track index of the previous
+10 minutes). Train on hours 0–16, test on hours 16–24.
+
+![Model zoo](reports/ml/classic_scores.png)
+
+| Model | MAE, all racing laps | MAE, clean laps | vs previous lap, 95 % interval |
 |---|---|---|---|
-| **Chronos-2** (zero-shot, with covariates) | **43.0 s** | 20.4 s | 62.3 s |
-| Baseline: last clean lap + typical pit loss | 46.0 s | **12.5 s** | **40.1 s** |
-| Baseline: median of 5 clean laps + pit loss | 46.0 s | 12.5 s | 40.8 s |
-| AutoGluon-TimeSeries (fast preset, ensemble) | 54.6 s | 37.4 s | 67.1 s |
+| **LightGBM** (L1 loss) | **31.4 s** | **8.4 s** | −12.1 s [−35.0; −0.4] |
+| LightGBM tuned with **Optuna** (40 trials, validation = hours 12–16 only) | 31.4 s | 8.8 s | −12.0 s [−34.9; −0.4] |
+| scikit-learn HistGradientBoosting | 31.7 s | 8.4 s | −11.8 s [−34.7; −0.0] |
+| CatBoost | 31.9 s | 8.5 s | −11.6 s [−34.5; +0.2] |
+| Huber regression (robust linear) | 32.7 s | 10.5 s | −10.7 s [−33.8; +1.2] |
+| XGBoost | 32.9 s | 8.4 s | −10.6 s [−33.8; +1.5] |
+| AutoGluon-Tabular (medium preset) | 33.6 s | 10.4 s | |
+| Ridge regression | 38.6 s | 18.3 s | −4.9 s [−26.5; +6.3] |
+| Baseline: median of the last 3 laps | 39.7 s | 13.6 s | −3.8 s [−20.8; +5.0] |
+| Random forest | 42.6 s | 11.7 s | −0.9 s [−23.7; +12.8] |
+| Baseline: same as previous lap | 43.5 s | 10.7 s | 0 |
 
-Is Chronos-2's lead real? A **paired block bootstrap** (resampling car × cut-off blocks) gives a
-difference of **−3.0 s, 95 % interval [−6.5; +0.5]**: **not significant**. On clean laps,
-Chronos-2 is **significantly worse** (+7.9 s, [+4.3; +12.2]). AutoGluon is significantly worse
-everywhere. **Conclusion:** on 24h endurance data the main uncertainty is neutralisations, which no
-lap history can foresee. A simple rule built with domain knowledge stays the reference for green
-pace. The foundation model only helps by hedging towards slower laps.
+* Gradient boosting wins (LightGBM, HistGradientBoosting, CatBoost: within 0.5 s of each other),
+  **ahead of AutoGluon**, and it is the only family whose lead over the baseline is significant. The
+  intervals are wide because a few neutralised laps cost minutes.
+* **Optuna tuning did not help** on the test hours: the best settings on hours 12–16 do not transfer
+  to the night and morning. Reported as it is.
+* **SHAP** (TreeSHAP built into LightGBM): the track index of the previous 10 minutes explains the
+  most (19 s on average), then the race hour (15 s) and the previous lap (9 s)
+  ([table](reports/ml/classic_shap.csv)).
+* **Conformal prediction** (conformalised quantile regression): raw LightGBM 80 % quantile bands
+  only contain **27 %** of the real laps of hours 16–24. After calibration on hours 12–16 they contain
+  **75 %** (77 % of clean laps) for a target of 80 %. Uncertainty you can nearly trust; the remaining
+  gap is the race changing between the calibration and test hours.
 
-**Next-lap model (AutoGluon-Tabular).** Train on hours 0–16, test on hours 16–24:
+**3c. Driver ratings with a mixed-effects model** (statsmodels, REML). Each clean lap, corrected for
+the track index = car effect + lap in stint + race hour + **driver effect** (random, shared across
+cars) + noise. Drivers with few laps are pulled towards zero, so 6 lucky laps cannot top the table.
 
-| Model | MAE, all racing laps | MAE, clean laps |
+![Driver ratings](reports/ml/driver_ratings.png)
+
+* 121 drivers, 1,634 clean laps. The driver-to-driver spread is **4.8 s per lap** against 6.6 s of
+  lap-to-lap noise: drivers explain **34 %** of the variance left once the car is known.
+* 19 drivers are significantly faster than expected in their car, and 19 significantly slower (90 %
+  interval). The ratings agree with the raw team-mate deltas (correlation 0.91) but come with
+  honest error bars ([table](reports/ml/driver_ratings.csv)).
+
+**3d. Rallycross: what wins a race?** 85 race or qualifying-round classifications, 1,143 driver
+results. Logistic regression (statsmodels, race-clustered errors), at equal pace:
+
+| Joker taken… | Odds of winning vs a mid-race joker | 95 % interval |
 |---|---|---|
-| **AutoGluon-Tabular** | **33.6 s** | **10.4 s** |
-| Linear regression | 38.5 s | 17.2 s |
-| Baseline: same as previous lap | 43.5 s | 10.7 s |
+| on the **last lap** | **× 2.1** | [1.2; 3.7] |
+| on **lap 1** | **× 0.27** | [0.09; 0.78] |
 
-AutoGluon improves the error by **23 %** overall. The most useful inputs are the previous lap,
-the track index of the previous 10 minutes, then the car model
-([importance](reports/ml/tabular_importance.csv)).
+Then a cross-validation that holds out **one whole meeting at a time**: the full logistic model
+(log loss 0.149, Brier score 0.046, its favourite wins **64 %** of races) beats gradient boosting
+(0.153, 56 %) and a pace-only model (0.155, 53 %). With 85 races a simple, interpretable model is
+the right choice. This is a **link, not proof of cause**: a leader in clean air can choose to joker
+late, while a driver stuck in traffic takes it on lap 1 to escape. That is exactly what the joker
+simulator explores.
 
-Limits, stated plainly: one race, laps capped at 2× the car's reference (red-flag laps of several
-hours cannot be forecast), and the "clean lap" flag is computed on the whole race, which slightly
-favours the baselines.
+Limits, stated plainly: one 24 h race; laps capped at 2× the car's reference (red-flag laps of
+several hours cannot be forecast); the "clean lap" flag is computed on the whole race, which
+slightly favours the baselines.
 
 ---
 
@@ -142,9 +200,14 @@ official documents, or to rerun the AI experiments:
 .venv\Scripts\mlab data rx --year 2026       # download + parse the ITS Chrono results
 .venv\Scripts\mlab report n24                # tables + figures in reports/n24
 .venv\Scripts\mlab report rx                 # tables + figures in reports/rx_france
+.venv\Scripts\python -m pip install -e ".[models]"   # LightGBM, XGBoost, CatBoost, statsforecast, statsmodels, Optuna
+.venv\Scripts\mlab ml classic                # model zoo + Optuna + SHAP + conformal (~2 min)
+.venv\Scripts\mlab ml ratings                # mixed-effects driver ratings
+.venv\Scripts\mlab ml rx-win                 # rallycross win model
+.venv\Scripts\mlab ml forecast               # ETS / Theta / ARIMA backtest (~1 min)
 .venv\Scripts\python -m pip install -e ".[ml]"   # Chronos-2, AutoGluon, PyTorch (CPU is fine)
-.venv\Scripts\mlab ml forecast               # ~10 min on a laptop CPU
-.venv\Scripts\mlab ml tabular                # ~3 min
+.venv\Scripts\mlab ml forecast --models last_clean_lap,median_5_clean_laps,chronos2,autogluon   # ~10 min
+.venv\Scripts\mlab ml tabular                # AutoGluon-Tabular, ~3 min
 ```
 
 Le Mans: the FIA WEC timing site (Al Kamel Systems) lists one `23_Analysis_Race*.CSV` per session
@@ -165,9 +228,13 @@ src/motorsport_lab/
     n24_wige.py        24h Nürburgring lap-by-lap + class results (PDF, wige)
     its_rallycross.py  French rallycross: public ITS Chrono API + heat PDFs (laps, joker splits)
     alkamel.py         FIA WEC / Le Mans Analysis CSV (Al Kamel)
-  endurance/     stints, pit stops, track index, driver deltas, Monte-Carlo pit strategy
-  rallycross/    joker cost, lap-1 cost, joker timing, Monte-Carlo joker simulator
-  ml/            Chronos-2 + AutoGluon-TimeSeries backtest, AutoGluon-Tabular lap model
+  endurance/     stints, pit stops, track index, driver deltas, Monte-Carlo pit strategy,
+                 ratings.py: mixed-effects driver ratings
+  rallycross/    joker cost, lap-1 cost, joker timing, Monte-Carlo joker simulator,
+                 models.py: logistic + gradient-boosting win model
+  ml/            forecasting.py: Chronos-2, AutoGluon-TimeSeries, ETS / Theta / ARIMA
+                 classic.py: ridge, Huber, random forest, LightGBM, XGBoost, CatBoost,
+                 Optuna, SHAP, conformal intervals; tabular.py: AutoGluon-Tabular
   reports.py     CSV + PNG; cli.py: the `mlab` command; i18n.py: FR/EN texts
 app/streamlit_app.py   bilingual dashboard
 data/   processed real data (CSV)      reports/   results shown above
@@ -189,9 +256,9 @@ From public job ads, engineer CVs and suppliers (sources below):
 | Car data logging & analysis | **Bosch WinDarab** (Porsche, BMW, Audi GT3 ECUs), **MoTeC i2**, **Pi Toolbox (Cosworth)**, **AiM Race Studio**, Magneti Marelli, Life Racing | not public; see roadmap (telemetry import) |
 | ECU / CAN set-up | Bosch RaceCon, CAN signal mapping | — |
 | Timing & scoring | Al Kamel (FIA WEC, Le Mans), wige (Nürburgring), ITS Chrono / All Tracks Timing (French rallycross) | ✅ parsers for all three |
-| Analysis & tools | **Python** and **MATLAB**, Excel, custom strategy tools | ✅ Python, pandas, NumPy, scikit-learn |
+| Analysis & tools | **Python** and **MATLAB**, Excel, custom strategy tools | ✅ Python, pandas, NumPy, scikit-learn, statsmodels |
 | Strategy | Monte-Carlo race simulation, pit-window and neutralisation ("safety car") scenarios | ✅ endurance + joker simulators |
-| Forecasting / ML | growing use of ML; time-series foundation models are new | ✅ Chronos-2, AutoGluon, honest backtest |
+| Forecasting / ML | growing use of ML; time-series foundation models are new | ✅ Chronos-2, AutoGluon, LightGBM / XGBoost / CatBoost, ETS / ARIMA, SHAP, conformal intervals, honest backtest |
 
 Rallycross work is short and intense (4–7-lap races). Data work is about launch and the first
 corner, the joker decision, and set-up between heats, with AiM / MoTeC / Life Racing loggers.

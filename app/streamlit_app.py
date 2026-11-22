@@ -191,12 +191,26 @@ elif page == "rx":
 elif page == "ml":
     st.title(t("ml", lang))
     st.markdown(t("ml_intro", lang))
-    for name in ("forecast_scores", "forecast_significance", "tabular_scores"):
-        csv = ML / f"{name}.csv"
-        if csv.exists():
-            st.dataframe(pd.read_csv(csv).round(3), use_container_width=True)
+    if not (ML / "forecast_scores.csv").exists():
+        st.info(t("no_ml", lang))
+    sections = {
+        "ml_forecast": ("forecast_scores", "forecast_significance"),
+        "ml_next_lap": (
+            "classic_scores",
+            "tabular_scores",
+            "classic_shap",
+            "conformal_intervals",
+        ),
+        "ml_drivers": ("driver_ratings_summary", "driver_ratings"),
+        "ml_rx": ("rx_win_odds_ratios", "rx_win_cv"),
+    }
+    for header, names in sections.items():
+        st.header(t(header, lang))
+        st.markdown(t(header + "_help", lang))
+        for name in names:
+            csv = ML / f"{name}.csv"
+            if csv.exists():
+                st.dataframe(pd.read_csv(csv).round(3), use_container_width=True)
             png = ML / f"{name}.png"
             if png.exists():
                 st.image(str(png))
-        else:
-            st.info(t("no_ml", lang))

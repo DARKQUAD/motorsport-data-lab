@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
@@ -194,4 +195,33 @@ def ml_figure(scores: pd.DataFrame, path: Path, title: str) -> None:
     ]
     ax.barh(scores["model"][::-1], scores["mae_all_s"][::-1], color=colors[::-1])
     _style(ax, title, "mean absolute error (s) — lower is better", "")
+    _save(fig, path)
+
+
+def shap_figure(shap: pd.DataFrame, path: Path) -> None:
+    """Mean |SHAP| per feature (seconds of lap time explained)."""
+    fig, ax = _figure(7, 3.2)
+    ax.barh(shap["feature"][::-1], shap["mean_abs_shap_s"][::-1], color=ACCENT2)
+    _style(ax, "What drives the LightGBM next-lap prediction (TreeSHAP)", "mean |SHAP| (s)", "")
+    _save(fig, path)
+
+
+def ratings_figure(ratings: pd.DataFrame, path: Path, top: int = 15) -> None:
+    """Fastest and slowest drivers vs their car, with 90 % intervals (mixed model)."""
+    shown = pd.concat([ratings.head(top), ratings.tail(top)]).drop_duplicates("driver")
+    shown = shown.iloc[::-1]
+    fig, ax = _figure(7, 0.28 * len(shown) + 1.2)
+    y = np.arange(len(shown))
+    ax.errorbar(
+        shown["effect_s"],
+        y,
+        xerr=[shown["effect_s"] - shown["low_s"], shown["high_s"] - shown["effect_s"]],
+        fmt="o",
+        color=ACCENT2,
+        ecolor=MUTED,
+        markersize=4,
+    )
+    ax.axvline(0, color=MUTED, lw=0.8)
+    ax.set_yticks(y, shown["driver"] + " (#" + shown["car"].astype(str) + ")", fontsize=7)
+    _style(ax, "Driver vs car-mates (mixed model, 90 % CI)", "s per lap", "")
     _save(fig, path)

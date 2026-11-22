@@ -16,6 +16,15 @@ dependencies = [
 
 [project.optional-dependencies]
 app = ["streamlit>=1.40", "plotly>=5.20"]
+# classic ML and statistics (light, CPU only): model zoo, forecasting stats, mixed models
+models = [
+    "lightgbm>=4.3",
+    "xgboost>=2.0",
+    "catboost>=1.2",
+    "statsforecast>=2.0",
+    "statsmodels>=0.14",
+    "optuna>=4.0",
+]
 ml = [
     "autogluon.timeseries>=1.6,<1.7",
     "autogluon.tabular[lightgbm,catboost]>=1.6,<1.7",
@@ -57,7 +66,7 @@ ignore_missing_imports = true
 exclude = ["app/"]
 
 [[tool.mypy.overrides]]
-module = ["motorsport_lab.ml.*"]
+module = ["motorsport_lab.ml.*", "motorsport_lab.endurance.ratings", "motorsport_lab.rallycross.models"]
 disallow_untyped_calls = false
 
 [tool.pylint.main]
@@ -66,6 +75,12 @@ disallow_untyped_calls = false
 disable = ["import-outside-toplevel"]
 # not installed in CI (optional [ml] extra)
 ignored-modules = ["autogluon", "chronos"]
+# C-extension members pylint cannot introspect
+extension-pkg-allow-list = ["lightgbm", "xgboost", "catboost"]
+
+[tool.pylint.basic]
+# scikit-learn convention for feature matrices (X, X_test, X_all), as in the ruff config
+good-names-rgxs = ["^X(_[a-z]+)?$"]
 
 [tool.pylint.design]
 # numeric code: simulators and PDF parsers keep their state in local arrays on purpose,
